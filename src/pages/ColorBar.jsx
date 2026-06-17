@@ -305,7 +305,7 @@ export default function ColorBar() {
     try {
       const allSteps = [...doneSteps, currentStepObj()];
       const { data: job, error: e1 } = await supabase.from('color_jobs').insert({
-        client_id: client.id, artist_id: session.user.id, appointment_id: appointmentId,
+        client_id: client.id, artist_id: activeArtist.id, appointment_id: appointmentId,
         base_level: baseLevel, status: 'done', finished_at: new Date().toISOString(),
       }).select().single();
       if (e1) throw e1;
@@ -331,7 +331,7 @@ export default function ColorBar() {
           const after = Math.max(0, Number(prod.current_stock) - pieces);
           await supabase.from('products').update({ current_stock: after }).eq('id', c.product_id);
           await supabase.from('inventory_movements').insert({
-            product_id: c.product_id, user_id: session.user.id, type: 'consumo_color',
+            product_id: c.product_id, user_id: activeArtist.id, type: 'consumo_color',
             quantity_before: prod.current_stock, quantity_after: after, grams: c.actual_g,
             notes: `Barra de Color · trabajo ${job.id.slice(0, 8)}`,
           });
@@ -351,7 +351,7 @@ export default function ColorBar() {
         const after = Math.max(0, Number(prod.current_stock) - pieces);
         await supabase.from('products').update({ current_stock: after }).eq('id', t.product.id);
         await supabase.from('inventory_movements').insert({
-          product_id: t.product.id, user_id: session.user.id, type: 'consumo_color',
+          product_id: t.product.id, user_id: activeArtist.id, type: 'consumo_color',
           quantity_before: prod.current_stock, quantity_after: after, grams: t.grams,
           notes: `Tratamiento · trabajo ${job.id.slice(0, 8)}`,
         });
@@ -387,7 +387,7 @@ export default function ColorBar() {
     setBusy(true);
     try {
       const { data: sale, error: e1 } = await supabase.from('sales').insert({
-        user_id: session.user.id, client_id: client.id, appointment_id: appointmentId,
+        user_id: activeArtist.id, client_id: client.id, appointment_id: appointmentId,
         service_name: services.map(s => s.name).join(' + ') || 'Barra de Color',
         service_price: totSvc, subtotal: totSvc + totProd, total: totalCobrar,
         financial_cost: Math.round(insumosCost + cardFee + giftCost), payment_method: payMethod,
@@ -405,7 +405,7 @@ export default function ColorBar() {
       if (client) await supabase.rpc('add_loyalty_stamp', { p_client_id: client.id, p_delta: 1, p_note: 'Servicio Barra de Color' });
       if (nextAppt) {
         await supabase.from('appointments').insert({
-          datetime: nextAppt.date.toISOString(), artist_id: session.user.id, client_id: client.id,
+          datetime: nextAppt.date.toISOString(), artist_id: activeArtist.id, client_id: client.id,
           client_name: client.full_name, reason: nextAppt.svc, status: 'scheduled', is_maintenance: true,
         });
       }

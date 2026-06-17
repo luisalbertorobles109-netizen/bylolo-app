@@ -7,7 +7,7 @@ import { Modal, Toast, useToast } from '../components/UI';
 
 export default function Clients() {
   const nav = useNavigate();
-  const { session } = useAuth();
+  const { activeArtist } = useAuth();
   const [clients, setClients] = useState([]);
   const [tagsCat, setTagsCat] = useState([]);
   const [q, setQ] = useState('');
@@ -39,7 +39,7 @@ export default function Clients() {
       phone: form.phone.trim() || null,
       birthday: form.bday || null,
       tags: form.tags,
-      artist_id: session.user.id,
+      artist_id: activeArtist.id,
     };
     const { error } = await supabase.from('clients').insert(payload);
     if (error) return setToast('⚠ ' + error.message);

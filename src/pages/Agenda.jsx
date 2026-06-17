@@ -10,7 +10,7 @@ function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x
 function endOfDay(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 
 export default function Agenda() {
-  const { session } = useAuth();
+  const { activeArtist } = useAuth();
   const nav = useNavigate();
   const [day, setDay] = useState(() => startOfDay(new Date()));
   const [appts, setAppts] = useState([]);
@@ -71,7 +71,7 @@ export default function Agenda() {
       const [hh, mm] = time.split(':');
       const dt = new Date(day); dt.setHours(Number(hh), Number(mm), 0, 0);
       const payload = {
-        datetime: dt.toISOString(), artist_id: session.user.id,
+        datetime: dt.toISOString(), artist_id: activeArtist.id,
         client_id: clientId || null, client_name: clientName || null,
         client_phone: phone || null, reason: reason || null, status: 'scheduled',
       };

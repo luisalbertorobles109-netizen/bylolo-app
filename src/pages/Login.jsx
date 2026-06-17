@@ -20,7 +20,7 @@ export default function Login() {
       if (mode === 'login') {
         const { error } = await signIn(email, pass);
         if (error) throw error;
-        nav('/');
+        nav('/seleccionar');
       } else {
         const { error } = await signUp(email, pass, name);
         if (error) throw error;

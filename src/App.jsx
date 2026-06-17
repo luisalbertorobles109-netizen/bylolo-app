@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Login from './pages/Login';
+import SelectArtist from './pages/SelectArtist';
 import Dashboard from './pages/Dashboard';
 import Agenda from './pages/Agenda';
 import ColorBar from './pages/ColorBar';
@@ -8,21 +9,24 @@ import NailBar from './pages/NailBar';
 import Clients from './pages/Clients';
 import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
+import TeamManager from './pages/TeamManager';
 import Finance from './pages/Finance';
 import WalkInSale from './pages/WalkInSale';
 import Loyalty from './pages/Loyalty';
 import PublicCard from './pages/PublicCard';
 
+// Protege rutas: requiere (1) sesión del dispositivo y (2) un artista activo seleccionado.
 function Protected({ children }) {
-  const { session } = useAuth();
+  const { session, activeArtist } = useAuth();
   if (session === undefined) return <div className="login-wrap"><div className="card">Cargando…</div></div>;
   if (!session) return <Navigate to="/login" replace />;
+  if (!activeArtist) return <Navigate to="/seleccionar" replace />;
   return children;
 }
 
 export function Shell({ title, sub, children, badge }) {
   const nav = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, activeArtist } = useAuth();
   return (
     <>
       <div className="appbar">
@@ -36,7 +40,7 @@ export function Shell({ title, sub, children, badge }) {
         <div className="spacer" />
         {badge}
         <button className="iconbtn" onClick={() => nav('/ajustes')} aria-label="Ajustes">⚙</button>
-        <button className="iconbtn" onClick={async () => { await signOut(); nav('/login'); }} aria-label="Salir">⎋</button>
+        <button className="iconbtn" onClick={async () => { await signOut(); nav('/seleccionar'); }} aria-label="Cambiar de artista" title="Salir / cambiar de artista">⎋</button>
       </div>
       {children}
     </>
@@ -47,6 +51,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/seleccionar" element={<SelectGate />} />
       <Route path="/tarjeta/:token" element={<PublicCard />} />
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/agenda" element={<Protected><Agenda /></Protected>} />
@@ -58,7 +63,17 @@ export default function App() {
       <Route path="/venta" element={<Protected><WalkInSale /></Protected>} />
       <Route path="/lealtad" element={<Protected><Loyalty /></Protected>} />
       <Route path="/ajustes" element={<Protected><Settings /></Protected>} />
+      <Route path="/equipo" element={<Protected><TeamManager /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+// Compuerta para el panel de selección: requiere sesión, pero NO artista activo.
+function SelectGate() {
+  const { session, activeArtist } = useAuth();
+  if (session === undefined) return <div className="login-wrap"><div className="card">Cargando…</div></div>;
+  if (!session) return <Navigate to="/login" replace />;
+  if (activeArtist) return <Navigate to="/" replace />;
+  return <SelectArtist />;
 }

@@ -134,6 +134,16 @@ export default function Settings() {
             </div>
 
             <div className="card">
+              <h3 style={{ fontSize: '1rem', marginBottom: 4 }}>PIN de administrador</h3>
+              <p style={{ color: 'var(--muted)', fontSize: '.82rem', margin: '0 0 10px' }}>Se pide al entrar como Admin desde el panel de selección. Usa solo números.</p>
+              <div className="field">
+                <label>PIN actual</label>
+                <input inputMode="numeric" maxLength={8} value={settings.admin_pin || ''}
+                  onChange={e => saveSettings({ admin_pin: e.target.value.replace(/\D/g, '') })} placeholder="4 dígitos" />
+              </div>
+            </div>
+
+            <div className="card">
               <h3 style={{ fontSize: '1rem', marginBottom: 4 }}>Borrar cobros de prueba</h3>
               <p style={{ color: 'var(--muted)', fontSize: '.82rem', margin: '0 0 10px' }}>Últimos 15 cobros. Útil para limpiar pruebas.</p>
               {recentSales.length === 0 && <p style={{ color: 'var(--muted)' }}>Sin cobros registrados.</p>}

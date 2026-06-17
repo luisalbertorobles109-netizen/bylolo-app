@@ -9,7 +9,7 @@ const BRANDS = ['Organic', 'Otro'];
 const CARD_FEE = 0.036;
 
 export default function NailBar() {
-  const { session } = useAuth();
+  const { activeArtist } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
   const [clients, setClients] = useState([]);
@@ -44,14 +44,14 @@ export default function NailBar() {
     setBusy(true);
     try {
       const { data: sale, error } = await supabase.from('sales').insert({
-        user_id: session.user.id, client_id: client?.id || null,
+        user_id: activeArtist.id, client_id: client?.id || null,
         service_name: `Uñas ${design} · ${brand} · tamaño ${size}`,
         service_price: Number(price), subtotal: Number(price), total: Number(price),
         payment_method: pay, financial_cost: fee, notes: 'Barra de Uñas',
       }).select().single();
       if (error) throw error;
       await supabase.from('nail_jobs').insert({
-        client_id: client?.id || null, artist_id: session.user.id, sale_id: sale.id,
+        client_id: client?.id || null, artist_id: activeArtist.id, sale_id: sale.id,
         brand, nail_size: size, design_type: design, price: Number(price),
       });
       if (client) await supabase.rpc('add_loyalty_stamp', { p_client_id: client.id, p_delta: 1, p_note: 'Servicio de uñas' });

@@ -234,3 +234,23 @@ table.inv td{padding:8px;border-bottom:1px solid var(--line)}
 .agenda-nav .btn{flex:1;min-width:90px}
 .appt.cancelled{opacity:.5}
 .appt.cancelled .time,.appt.cancelled div{text-decoration:line-through}
+
+/* ---- Panel de selección de artista ---- */
+.select-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;max-width:760px;margin:0 auto;text-align:center}
+.select-head{margin-bottom:32px}
+.select-logo{width:84px;height:84px;border-radius:20px;margin:0 auto 18px;display:block}
+.select-head h1{font-family:'Bricolage Grotesque',sans-serif;font-size:1.9rem;font-weight:800;margin-bottom:6px}
+.select-head p{color:var(--muted)}
+.artist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;width:100%}
+.artist-btn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:transform .12s,border-color .12s;min-height:150px;justify-content:center}
+.artist-btn:active{transform:scale(.97)}
+.artist-btn:hover{border-color:var(--violet)}
+.artist-btn.admin{background:radial-gradient(120% 140% at 50% 0%,#3a2d05 0%,var(--surface) 70%);border-color:#c9a23a}
+.artist-av{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:800;background:linear-gradient(135deg,var(--pigment),var(--violet));color:#fff}
+.artist-btn.admin .artist-av{background:linear-gradient(135deg,#f7d774,#c9a23a)}
+.artist-name{font-weight:700;font-size:1.05rem}
+.artist-role{font-size:.74rem;color:var(--muted)}
+.select-exit{margin-top:32px}
+.pin-input{width:100%;text-align:center;font-size:2rem;letter-spacing:.5rem;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--surface2);color:var(--text);font-weight:700}
+
+.station.equipo{background:radial-gradient(120% 140% at 85% 10%,#8b5cf6 0%,#5b21b6 55%,#2a1245 100%)}

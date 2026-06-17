@@ -49,10 +49,13 @@ export default function Finance() {
 
   // Filtrar por alcance seleccionado (solo Admin puede cambiarlo)
   const myId = profile?.id;
-  const viewSales = !isAdmin ? sales
+  // La base ahora entrega todas las ventas al dispositivo; el filtrado por artista
+  // se hace aquí según quién fichó. Un artista solo ve las suyas; el Admin elige alcance.
+  const viewSales = !isAdmin ? sales.filter(s => s.user_id === myId)
     : scope === 'salon' ? sales
     : sales.filter(s => s.user_id === scope);
-  const viewExpenses = (!isAdmin || scope === 'salon') ? expenses
+  const viewExpenses = !isAdmin ? expenses.filter(e => e.user_id === myId)
+    : scope === 'salon' ? expenses
     : expenses.filter(e => e.user_id === scope);
 
   const ingresos = viewSales.reduce((a, s) => a + Number(s.total || 0), 0);
@@ -78,7 +81,7 @@ export default function Finance() {
   async function addExpense() {
     const amt = Number(expAmount);
     if (!amt) return setToast('Escribe un monto');
-    const { error } = await supabase.from('operating_expenses').insert({ category: expCat, amount: amt, notes: expNote || null });
+    const { error } = await supabase.from('operating_expenses').insert({ category: expCat, amount: amt, notes: expNote || null, user_id: profile?.id || null });
     if (error) return setToast('⚠ ' + error.message);
     setToast('✓ Gasto registrado'); setShowExp(false); setExpAmount(''); setExpNote(''); load();
   }

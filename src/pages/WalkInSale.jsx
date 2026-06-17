@@ -5,7 +5,7 @@ import { Shell } from '../App';
 import { Toast, useToast } from '../components/UI';
 
 export default function WalkInSale() {
-  const { session } = useAuth();
+  const { activeArtist } = useAuth();
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState('');
   const [cart, setCart] = useState([]); // {product, qty}
@@ -48,7 +48,7 @@ export default function WalkInSale() {
     setBusy(true);
     try {
       const { data: sale, error } = await supabase.from('sales').insert({
-        user_id: session.user.id, service_name: 'Venta de productos',
+        user_id: activeArtist.id, service_name: 'Venta de productos',
         service_price: 0, subtotal: total, total,
         payment_method: pay, financial_cost: Math.round(costo + cardFee), notes: 'Venta sin cita' + (pay === 'tarjeta' ? ` · comisión $${cardFee.toFixed(0)}` : ''),
       }).select().single();
@@ -63,7 +63,7 @@ export default function WalkInSale() {
         const after = Math.max(0, Number(x.product.current_stock) - x.qty);
         await supabase.from('products').update({ current_stock: after }).eq('id', x.product.id);
         await supabase.from('inventory_movements').insert({
-          product_id: x.product.id, user_id: session.user.id, type: 'venta',
+          product_id: x.product.id, user_id: activeArtist.id, type: 'venta',
           quantity_before: x.product.current_stock, quantity_after: after, notes: 'Venta sin cita',
         });
       }
