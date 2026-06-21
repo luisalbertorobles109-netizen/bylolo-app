@@ -8,15 +8,7 @@ import { connectSkale } from '../lib/scale';
 import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts } from '../components/Checkout';
 
 const CARD_FEE = 0.036;
-const SERVICE_TYPES = [
-  'Corte de pelo',
-  'Tratamiento capilar',
-  'Peinado',
-  'Secado / Brushing',
-  'Hidratación',
-  'Otro servicio',
-];
-const TOL = 1.0; // tolerancia de gramos para marcar "en su punto"
+const SERVICE_TYPES = ['Corte de pelo', 'Tratamiento', 'Peinado', 'Otro servicio'];
 
 export default function Services() {
   const { activeArtist } = useAuth();
@@ -26,19 +18,22 @@ export default function Services() {
   const [client, setClient] = useState(null);
   const [q, setQ] = useState('');
   const [serviceType, setServiceType] = useState('Corte de pelo');
+  const [treatmentMode, setTreatmentMode] = useState(null);      // 'Alisado' | 'Otro'
+  const [treatmentOtherMode, setTreatmentOtherMode] = useState(null); // 'Tratamiento' | 'Color'
+  const [colorBrand, setColorBrand] = useState('');
   const [customName, setCustomName] = useState('');
   const [price, setPrice] = useState('');
   const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod } = useSaleExtras();
   const [screen, setScreen] = useState(1);
   const [supplies, setSupplies] = useState([]);
-  const [used, setUsed] = useState([]);          // [{product, grams, target}]
+  const [used, setUsed] = useState([]);          // [{product, grams}]
   const [showSupplies, setShowSupplies] = useState(false);
   const [supplyQ, setSupplyQ] = useState('');
   const [toast, setToast] = useToast();
   const [busy, setBusy] = useState(false);
 
   // ---- báscula ----
-  const [weighIdx, setWeighIdx] = useState(null); // índice del insumo que se está pesando
+  const [weighIdx, setWeighIdx] = useState(null);
   const [curGrams, setCurGrams] = useState(0);
   const [bleOn, setBleOn] = useState(false);
   const [diag, setDiag] = useState(false);
@@ -53,7 +48,7 @@ export default function Services() {
   useEffect(() => {
     Promise.all([
       supabase.from('clients').select('id, full_name, phone').order('full_name').limit(500),
-      supabase.from('products').select('*').eq('type', 'insumo').eq('status', 'Activo').order('name').limit(600),
+      supabase.from('products').select('*').eq('type', 'insumo').eq('status', 'Activo').order('name').limit(800),
     ]).then(([c, s]) => {
       setClients(c.data || []);
       setSupplies(s.data || []);
@@ -66,23 +61,66 @@ export default function Services() {
     return () => { try { bleRef.current?.disconnect(); } catch (e) {} cancelAnimationFrame(rafRef.current); };
   }, []);
 
+  // Al cambiar el tipo de servicio, reinicia submodos e insumos
+  function pickServiceType(s) {
+    setServiceType(s); setTreatmentMode(null); setTreatmentOtherMode(null); setUsed([]); setShowSupplies(false);
+  }
+
+  // ---- Contexto de la "mezcla" según el tipo de servicio ----
+  // Devuelve { mode:'insumos', classes:[...] } | { mode:'color' } | null (sin mezcla)
+  function supplyContext() {
+    if (serviceType === 'Corte de pelo' || serviceType === 'Peinado')
+      return { mode: 'insumos', classes: ['Tratamiento', 'Estilizado'], label: 'Productos usados (opcional)' };
+    if (serviceType === 'Tratamiento') {
+      if (treatmentMode === 'Alisado') return { mode: 'insumos', classes: ['Alisado'], label: 'Insumos de Alisado' };
+      if (treatmentMode === 'Otro') {
+        if (treatmentOtherMode === 'Tratamiento') return { mode: 'insumos', classes: ['Tratamiento'], label: 'Insumos de Tratamiento' };
+        if (treatmentOtherMode === 'Color') return { mode: 'color', label: 'Color a utilizar' };
+      }
+    }
+    return null;
+  }
+  const ctx = supplyContext();
+
   const filtered = clients.filter(c => (c.full_name || '').toLowerCase().includes(q.toLowerCase()));
-  const filteredSupplies = supplies.filter(p =>
-    [p.name, p.brand, p.gama].join(' ').toLowerCase().includes(supplyQ.toLowerCase()));
-  const serviceName = serviceType === 'Otro servicio' ? (customName || 'Servicio') : serviceType;
+  const matchQ = p => [p.name, p.brand, p.gama].join(' ').toLowerCase().includes(supplyQ.toLowerCase());
+  const insumosForCtx = ctx?.mode === 'insumos'
+    ? supplies.filter(p => ctx.classes.includes(p.class) && matchQ(p)) : [];
+
+  // ---- Color (submodo) ----
+  const tintes = supplies.filter(p => p.class === 'Tinte');
+  const tinteBrands = [...new Set(tintes.map(t => t.brand).filter(Boolean))];
+  const peroxidos = supplies.filter(p => p.class === 'Peroxido');
+  const tintesOfBrand = tintes.filter(t => t.brand === colorBrand && matchQ(t));
+
+  function addUsed(p) {
+    if (used.some(u => u.product.id === p.id)) return setToast('Ya está agregado');
+    setUsed(u => [...u, { product: p, grams: 0 }]);
+    setShowSupplies(false); setSupplyQ('');
+  }
+
+  // ---- nombre del servicio ----
+  let serviceName = serviceType;
+  if (serviceType === 'Otro servicio') serviceName = customName || 'Servicio';
+  else if (serviceType === 'Tratamiento') {
+    if (treatmentMode === 'Alisado') serviceName = 'Alisado';
+    else if (treatmentMode === 'Otro' && treatmentOtherMode === 'Tratamiento') serviceName = 'Tratamiento';
+    else if (treatmentMode === 'Otro' && treatmentOtherMode === 'Color') serviceName = 'Tratamiento de color';
+    else serviceName = 'Tratamiento';
+  }
+
   const insumosCost = used.reduce((a, u) => {
     const gpp = Number(u.product.gramos_por_pieza) || 0;
     const perGram = gpp > 0 ? Number(u.product.cost) / gpp : 0;
     return a + (Number(u.grams) || 0) * perGram;
   }, 0);
-  // Sugerido: precio por gramo de insumos + precio de productos agregados
   const suggestedFromSupplies = used.reduce((a, u) => a + (Number(u.grams) || 0) * Number(u.product.price_per_gram || 0), 0);
   const suggestedProducts = products.reduce((a, p) => a + (p.gift ? 0 : Number(p.price || 0)), 0);
   const suggested = Math.round(suggestedFromSupplies + suggestedProducts);
   const serviceSubtotal = Number(price || 0);
   const b = computeBreakdown({ serviceSubtotal, products, discountPct, payMethod, suppliesCost: insumosCost });
 
-  // ---- lógica de báscula ----
+  // ---- báscula ----
   function tare(silent) {
     offsetRef.current = lastRawRef.current; simRef.current = 0; setCurGrams(0);
     if (bleRef.current) bleRef.current.tare();
@@ -98,7 +136,6 @@ export default function Services() {
       bleRef.current = s; setBleOn(true); setToast('Báscula conectada ✓');
     } catch (err) { setToast('⚠ ' + err.message); setDiagLog(l => ('Error: ' + err.message + '\n' + l).slice(0, 4000)); }
   }
-  // simulador (cuando no hay báscula física): mantén presionado "Verter"
   function pourLoop() {
     if (!pourRef.current) return;
     simRef.current = Math.max(0, simRef.current + 0.4 + Math.random() * 0.06);
@@ -107,7 +144,6 @@ export default function Services() {
   }
   const startPour = (e) => { e.preventDefault(); if (bleOn) return; pourRef.current = true; pourLoop(); };
   const stopPour = () => { pourRef.current = false; cancelAnimationFrame(rafRef.current); };
-
   function openWeigh(i) { setWeighIdx(i); setCurGrams(0); simRef.current = 0; tare(true); }
   function saveWeight() {
     setUsed(x => x.map((y, j) => j === weighIdx ? { ...y, grams: Math.round(curGrams * 10) / 10 } : y));
@@ -151,35 +187,27 @@ export default function Services() {
     } catch (e) { setToast('⚠ ' + e.message); } finally { setBusy(false); }
   }
 
-  // ---- pantalla de báscula (cuando se está pesando un insumo) ----
+  // ---- pantalla de báscula ----
   if (weighIdx !== null) {
     const u = used[weighIdx];
-    const near = curGrams > 0;
     return (
       <Shell title="Báscula" sub={u?.product?.name || 'Pesar insumo'}>
         <div className="screen" style={{ paddingBottom: 40, textAlign: 'center' }}>
           <h2>Pesar: {u?.product?.name}</h2>
           <p className="lead">Pon el recipiente, dale Tara, y vierte el producto. {bleOn ? 'Báscula conectada.' : 'Sin báscula: mantén presionado “Verter” para simular.'}</p>
-
           <div className="scale-readout">
             <span className="dot-live" style={{ background: bleOn ? '#46d39a' : '#888' }} />
             <div className="scale-grams num">{curGrams.toFixed(1)} <small>g</small></div>
           </div>
-
           <div className="row" style={{ justifyContent: 'center', marginBottom: 12 }}>
             {!bleOn && <button className="btn primary" style={{ minWidth: 160 }}
               onMouseDown={startPour} onMouseUp={stopPour} onMouseLeave={stopPour}
               onTouchStart={startPour} onTouchEnd={stopPour}>⬇ Mantén para verter</button>}
             <button className="btn" onClick={() => tare(false)}>Tara (poner en 0)</button>
           </div>
-
-          {!bleOn && (
-            <button className="btn ghost" style={{ width: '100%', marginBottom: 8 }} onClick={connectScale}>📲 Conectar SKALE 2</button>
-          )}
-
+          {!bleOn && <button className="btn ghost" style={{ width: '100%', marginBottom: 8 }} onClick={connectScale}>📲 Conectar SKALE 2</button>}
           <button className="btn xl primary" style={{ width: '100%' }} onClick={saveWeight}>✓ Guardar {curGrams.toFixed(1)} g</button>
           <button className="btn ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => setWeighIdx(null)}>Cancelar</button>
-
           <button className="btn ghost sm" style={{ width: '100%', marginTop: 14 }} onClick={() => setDiag(d => !d)}>Modo diagnóstico báscula</button>
           {diag && <div className="diaglog">{diagLog || 'Esperando datos de la báscula…'}</div>}
         </div>
@@ -215,10 +243,34 @@ export default function Services() {
             <div className="field"><label>Tipo de servicio</label>
               <div className="pill-grid">
                 {SERVICE_TYPES.map(s => (
-                  <button key={s} className={'pill' + (serviceType === s ? ' sel' : '')} onClick={() => setServiceType(s)}>{s}</button>
+                  <button key={s} className={'pill' + (serviceType === s ? ' sel' : '')} onClick={() => pickServiceType(s)}>{s}</button>
                 ))}
               </div>
             </div>
+
+            {/* Submenú de Tratamiento */}
+            {serviceType === 'Tratamiento' && (
+              <div className="field"><label>Tipo de tratamiento</label>
+                <div className="pill-grid">
+                  {['Alisado', 'Otro'].map(m => (
+                    <button key={m} className={'pill' + (treatmentMode === m ? ' sel' : '')}
+                      onClick={() => { setTreatmentMode(m); setTreatmentOtherMode(null); setUsed([]); }}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Submenú de Tratamiento > Otro */}
+            {serviceType === 'Tratamiento' && treatmentMode === 'Otro' && (
+              <div className="field"><label>¿Qué tipo?</label>
+                <div className="pill-grid">
+                  {['Tratamiento', 'Color'].map(m => (
+                    <button key={m} className={'pill' + (treatmentOtherMode === m ? ' sel' : '')}
+                      onClick={() => { setTreatmentOtherMode(m); setUsed([]); }}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {serviceType === 'Otro servicio' && (
               <div className="field"><label>Nombre del servicio</label>
                 <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Escribe el servicio" />
@@ -226,37 +278,89 @@ export default function Services() {
             )}
           </div>
 
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <h3 style={{ fontSize: '1rem' }}>Mezcla del tratamiento (opcional)</h3>
-              <button className="btn sm" onClick={() => setShowSupplies(s => !s)}>{showSupplies ? 'Cerrar' : '＋ Agregar'}</button>
+          {/* ---- Mezcla / insumos (según contexto) ---- */}
+          {ctx?.mode === 'insumos' && (
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ fontSize: '1rem' }}>{ctx.label}</h3>
+                <button className="btn sm" onClick={() => setShowSupplies(s => !s)}>{showSupplies ? 'Cerrar' : '＋ Agregar'}</button>
+              </div>
+              <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 8px' }}>
+                Agrega y pesa con la báscula. Los gramos se descuentan del inventario como costo.
+              </p>
+              {showSupplies && (
+                <div style={{ marginBottom: 10 }}>
+                  <div className="field"><input placeholder="Buscar insumo…" value={supplyQ} onChange={e => setSupplyQ(e.target.value)} /></div>
+                  <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                    {insumosForCtx.slice(0, 60).map(p => (
+                      <button key={p.id} className="pill" style={{ width: '100%', textAlign: 'left', marginBottom: 4 }} onClick={() => addUsed(p)}>
+                        ＋ {p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand} {p.gama || ''}</span>
+                      </button>
+                    ))}
+                    {insumosForCtx.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>No hay insumos de {ctx.classes.join(' / ')} en tu inventario.</p>}
+                  </div>
+                </div>
+              )}
+              {used.map((u, i) => (
+                <div key={i} className="comp-row">
+                  <div className="cname">{u.product.name}
+                    <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>{u.grams ? `${u.grams} g` : 'sin pesar'}</div>
+                  </div>
+                  <button className="btn sm primary" onClick={() => openWeigh(i)}>⚖ Pesar</button>
+                  <button className="btn ghost sm" onClick={() => setUsed(x => x.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
             </div>
-            <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 8px' }}>
-              Agrega los insumos de la mezcla y pésalos con la báscula. Los gramos se descuentan del inventario como costo.
-            </p>
-            {showSupplies && (
-              <div style={{ marginBottom: 10 }}>
-                <div className="field"><input placeholder="Buscar insumo…" value={supplyQ} onChange={e => setSupplyQ(e.target.value)} /></div>
-                <div style={{ maxHeight: 160, overflow: 'auto' }}>
-                  {filteredSupplies.slice(0, 40).map(p => (
-                    <button key={p.id} className="pill" style={{ width: '100%', textAlign: 'left', marginBottom: 4 }}
-                      onClick={() => { setUsed(u => [...u, { product: p, grams: 0 }]); setShowSupplies(false); setSupplyQ(''); }}>
-                      ＋ {p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand} {p.gama || ''}</span>
+          )}
+
+          {/* ---- Color (submodo Tratamiento > Otro > Color) ---- */}
+          {ctx?.mode === 'color' && (
+            <div className="card">
+              <h3 style={{ fontSize: '1rem', marginBottom: 6 }}>Color a utilizar</h3>
+              <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 8px' }}>Elige la marca, el tono y, si aplica, el peróxido. Después pésalos.</p>
+              <div className="field"><label>Marca</label>
+                <div className="pill-grid">
+                  {tinteBrands.map(br => (
+                    <button key={br} className={'pill' + (colorBrand === br ? ' sel' : '')} onClick={() => setColorBrand(br)}>{br === 'KULL' ? 'KÜÜL' : br}</button>
+                  ))}
+                </div>
+              </div>
+              {colorBrand && (
+                <div className="field"><label>Tono</label>
+                  <input placeholder="Buscar tono…" value={supplyQ} onChange={e => setSupplyQ(e.target.value)} style={{ marginBottom: 6 }} />
+                  <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                    {tintesOfBrand.slice(0, 60).map(p => (
+                      <button key={p.id} className="pill" style={{ width: '100%', textAlign: 'left', marginBottom: 4 }} onClick={() => addUsed(p)}>
+                        ＋ {p.name} <span style={{ color: 'var(--muted)' }}>· {p.gama || ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="field" style={{ marginBottom: 0 }}><label>Peróxido (opcional)</label>
+                <div style={{ maxHeight: 140, overflow: 'auto' }}>
+                  {peroxidos.map(p => (
+                    <button key={p.id} className="pill" style={{ width: '100%', textAlign: 'left', marginBottom: 4 }} onClick={() => addUsed(p)}>
+                      ＋ {p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
                     </button>
                   ))}
                 </div>
               </div>
-            )}
-            {used.map((u, i) => (
-              <div key={i} className="comp-row">
-                <div className="cname">{u.product.name}
-                  <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>{u.grams ? `${u.grams} g` : 'sin pesar'}</div>
+              {used.length > 0 && (
+                <div style={{ marginTop: 10, borderTop: '1px dashed var(--line)', paddingTop: 10 }}>
+                  {used.map((u, i) => (
+                    <div key={i} className="comp-row">
+                      <div className="cname">{u.product.name}
+                        <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>{u.grams ? `${u.grams} g` : 'sin pesar'}</div>
+                      </div>
+                      <button className="btn sm primary" onClick={() => openWeigh(i)}>⚖ Pesar</button>
+                      <button className="btn ghost sm" onClick={() => setUsed(x => x.filter((_, j) => j !== i))}>✕</button>
+                    </div>
+                  ))}
                 </div>
-                <button className="btn sm primary" onClick={() => openWeigh(i)}>⚖ Pesar</button>
-                <button className="btn ghost sm" onClick={() => setUsed(x => x.filter((_, j) => j !== i))}>✕</button>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
 
           <div className="card">
             <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Precio del servicio</h3>

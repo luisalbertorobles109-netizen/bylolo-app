@@ -52,7 +52,7 @@ export default function ColorBar() {
   const [baseLevel, setBaseLevel] = useState(5);
   const [mode, setMode] = useState('sugerida');
   const [peroxRows, setPeroxRows] = useState([]);
-  const [extra, setExtra] = useState('');
+  const [extraAdds, setExtraAdds] = useState([]);   // aditivos del inventario [{product, g}]
   const [doneSteps, setDoneSteps] = useState([]);
   const [svcItems, setSvcItems] = useState([]);
   const [treatments, setTreatments] = useState([]);   // [{product, grams, price}]
@@ -82,7 +82,7 @@ export default function ColorBar() {
         supabase.from('service_catalog').select('*').eq('active', true),
         supabase.from('products').select('*').eq('class', 'Peroxido').eq('status', 'Activo'),
         supabase.from('products').select('*').eq('class', 'Tratamiento').eq('status', 'Activo').order('name'),
-        supabase.from('products').select('*').eq('class', 'Aditivo').eq('status', 'Activo').order('name'),
+        supabase.from('products').select('*').in('class', ['Aditivo', 'Reforzador']).eq('status', 'Activo').order('name'),
       ]);
       setClients(c.data || []);
       setAppts(a.data || []);
@@ -167,23 +167,32 @@ export default function ColorBar() {
       type: classifyTone(m.p).isBleach ? 'decolorante' : 'tinte',
     }));
     let base = mix.reduce((a, m) => a + m.g, 0);
-    if (extra === '000') { comps.push({ key: '000', name: 'KÜÜL 000 Reforzador', g: base, color: '#f4ecd9', cost: 0.5, type: 'aditivo' }); base *= 2; }
     const pName = R.perox_name || 'Peróxido';
     const rowsToUse = mode === 'custom'
       ? peroxRows.filter(r => r.vol > 0 && r.g > 0)
       : (suggestion.ratio > 0 && suggestion.vol > 0 ? [{ vol: suggestion.vol, g: Math.round(base * suggestion.ratio) }] : []);
     rowsToUse.forEach(r => {
-      const pp = peroxProducts.find(x => (x.name || '').includes(String(r.vol)));
+      // Si el artista eligió un peróxido específico, úsalo; si no, intenta emparejar por volumen.
+      const pp = r.product_id ? peroxProducts.find(x => x.id === r.product_id)
+        : peroxProducts.find(x => (x.name || '').includes(String(r.vol)));
+      const label = pp ? `${pp.name} · ${r.vol} vol` : `${pName} · ${r.vol} vol`;
       comps.push({
-        key: 'peroxido', product_id: pp?.id || null, name: `${pName} · ${r.vol} vol`, peroxide_vol: r.vol,
+        key: 'peroxido', product_id: pp?.id || null, name: label, peroxide_vol: r.vol,
         g: r.g, color: '#f2b33d',
         cost: pp && pp.gramos_por_pieza > 0 ? Number(pp.cost) / Number(pp.gramos_por_pieza) : 0.18, type: 'peroxido',
       });
     });
-    if (extra === 'olaplex') comps.push({ key: 'olaplex', name: 'Olaplex 4 en 1', g: 4, color: '#cfd6f5', cost: 3, type: 'aditivo' });
-    if (extra === 'matiz') comps.push({ key: 'matiz', name: 'Gotas de matiz', g: 2, color: '#b07fe8', cost: 2.5, type: 'aditivo' });
+    // Aditivos del inventario (clase Aditivo / Reforzador)
+    extraAdds.forEach(ad => {
+      const gpp = Number(ad.product.gramos_por_pieza) || 0;
+      comps.push({
+        key: 'aditivo', product_id: ad.product.id, name: ad.product.name,
+        g: Number(ad.g) || 0, color: '#cfd6f5',
+        cost: gpp > 0 ? Number(ad.product.cost) / gpp : 0, type: 'aditivo',
+      });
+    });
     return comps;
-  }, [mix, mode, peroxRows, extra, suggestion, R, peroxProducts]);
+  }, [mix, mode, peroxRows, extraAdds, suggestion, R, peroxProducts]);
 
   // ---------- báscula ----------
   const [weighComps, setWeighComps] = useState([]);
@@ -207,7 +216,7 @@ export default function ColorBar() {
         setDesignName(snap.designName || ''); setStepType(snap.stepType || null); setDecolorMix(snap.decolorMix || []);
         setBrandView(snap.brandView || 'KULL'); setGamaView(snap.gamaView || '');
         setMix(snap.mix || []); setBaseLevel(snap.baseLevel ?? 5); setMode(snap.mode || 'sugerida');
-        setPeroxRows(snap.peroxRows || []); setExtra(snap.extra || '');
+        setPeroxRows(snap.peroxRows || []); setExtraAdds(snap.extraAdds || []);
         setDoneSteps(snap.doneSteps || []); setSvcItems(snap.svcItems || []);
         setTreatments(snap.treatments || []); setServices(snap.services || []); setProds(snap.prods || []);
         setWeighComps(snap.weighComps || []); setWeights(snap.weights || []); setCompIdx(snap.compIdx || 0);
@@ -222,9 +231,9 @@ export default function ColorBar() {
   // ---- Guardar sesión cuando cambian los datos del trabajo ----
   useEffect(() => {
     if (!readyRef.current || !client) return;
-    const snap = { screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
+    const snap = { screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extraAdds, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) {}
-  }, [screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod]);
+  }, [screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extraAdds, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod]);
   const simRef = useRef(0);
   const pourRef = useRef(false);
   const rafRef = useRef(null);
@@ -296,12 +305,12 @@ export default function ColorBar() {
       bleRef.current = s; setBleOn(true);
     } catch (err) { setToast('⚠ ' + err.message); setDiagLog(l => ('Error: ' + err.message + '\n' + l).slice(0, 4000)); }
   }
-  function addMidComp(kind, customName, customG) {
+  function addMidComp(kind, customName, customG, product) {
     let c = null;
-    const totalTinte = mix.reduce((a, m) => a + m.g, 0);
-    if (kind === 'olaplex') c = { key: 'olaplex', name: 'Olaplex 4 en 1', g: 4, color: '#cfd6f5', cost: 3, type: 'aditivo' };
-    if (kind === 'matiz') c = { key: 'matiz', name: 'Gotas de matiz', g: 2, color: '#b07fe8', cost: 2.5, type: 'aditivo' };
-    if (kind === '000') c = { key: '000', name: 'KÜÜL 000 Reforzador', g: totalTinte, color: '#f4ecd9', cost: 0.5, type: 'aditivo' };
+    if (kind === 'aditivo' && product) {
+      const gpp = Number(product.gramos_por_pieza) || 0;
+      c = { key: 'aditivo', product_id: product.id, name: product.name, g: customG || 5, color: '#cfd6f5', cost: gpp > 0 ? Number(product.cost) / gpp : 0, type: 'aditivo' };
+    }
     if (kind === 'perox') c = { key: 'peroxido', name: (R.perox_name || 'Peróxido') + ' (extra)', g: 20, color: '#f2b33d', cost: 0.18, type: 'peroxido' };
     if (kind === 'otro') {
       if (!customName || !customG) return setToast('Escribe nombre y gramos');
@@ -333,7 +342,7 @@ export default function ColorBar() {
   }
   function addAnotherStep() {
     setDoneSteps(s => [...s, currentStepObj()]);
-    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
+    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtraAdds([]);
     setWeighComps([]); setWeights([]); setCompIdx(0);
     setDecolorMix([]); setStepType(null);
     tmr.reset();
@@ -344,7 +353,7 @@ export default function ColorBar() {
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
     tmr.clear();
     setClient(null); setAppointmentId(null); setDesignName(''); setStepType(null); setDecolorMix([]);
-    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
+    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtraAdds([]);
     setDoneSteps([]); setSvcItems([]); setTreatments([]); setServices([]); setProds([]);
     setWeighComps([]); setWeights([]); setCompIdx(0); setSavedJobId(null); setDiscountPct(0); setPayMethod('efectivo');
     setPhotoFile(null); setPhotoPreview(null);
@@ -776,36 +785,75 @@ export default function ColorBar() {
             <button className={'btn' + (mode === 'sugerida' ? ' ok' : '')} onClick={() => setMode('sugerida')}>✓ Fórmula sugerida</button>
             <button className={'btn' + (mode === 'custom' ? ' warn' : ' ghost')} onClick={() => {
               setMode('custom');
-              if (!peroxRows.length) setPeroxRows([{ vol: suggestion.vol || 20, g: Math.round((suggestion.totalG || 60) * (suggestion.ratio || 1)) }]);
+              if (!peroxRows.length) setPeroxRows([{ vol: suggestion.vol || 20, g: Math.round((suggestion.totalG || 60) * (suggestion.ratio || 1)), product_id: '' }]);
             }}>✎ Personalizada</button>
           </div>
+
+          {/* Peróxido: elegir marca/volumen o quitarlo (disponible en modo personalizado) */}
+          {mode === 'sugerida' && (
+            <div className="info-cost" style={{ marginBottom: 12 }}>
+              💡 ¿Quieres otro peróxido (marca/volumen) o quitarlo? Toca <b>✎ Personalizada</b> para elegirlo tú.
+            </div>
+          )}
           {mode === 'custom' && (
             <div className="card">
-              <h3 style={{ fontSize: '1rem', marginBottom: 12 }}>Fórmula personalizada</h3>
-              <div className="field"><label>Peróxidos — puedes usar varios volúmenes en la misma fórmula</label>
-                {peroxRows.map((r, i) => (
-                  <div key={i} className="perox-row">
+              <h3 style={{ fontSize: '1rem', marginBottom: 12 }}>Peróxido / Revelador</h3>
+              <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 10px' }}>Elige la marca y volumen, o quítalo con la ✕. Puedes usar varios.</p>
+              {peroxRows.map((r, i) => (
+                <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, marginBottom: 8 }}>
+                  <div className="field" style={{ marginBottom: 8 }}>
+                    <label>Producto (marca)</label>
+                    <select value={r.product_id || ''} onChange={e => setPeroxRows(rows => rows.map((x, j) => j === i ? { ...x, product_id: e.target.value } : x))}>
+                      <option value="">Auto (por volumen)</option>
+                      {peroxProducts.map(p => <option key={p.id} value={p.id}>{p.name} · {p.brand}</option>)}
+                    </select>
+                  </div>
+                  <div className="perox-row">
                     <select value={r.vol} onChange={e => setPeroxRows(rows => rows.map((x, j) => j === i ? { ...x, vol: +e.target.value } : x))}>
                       {[0, 10, 20, 30, 40].map(v => <option key={v} value={v}>{v === 0 ? 'Sin peróxido' : `${v} vol (${v * 0.3}%)`}</option>)}
                     </select>
                     <input type="number" inputMode="decimal" value={r.g}
                       onChange={e => setPeroxRows(rows => rows.map((x, j) => j === i ? { ...x, g: +e.target.value || 0 } : x))} />
                     <span style={{ color: 'var(--muted)', fontWeight: 700 }}>g</span>
-                    {peroxRows.length > 1 && <button className="del" onClick={() => setPeroxRows(rows => rows.filter((_, j) => j !== i))}>✕</button>}
+                    <button className="del" title="Quitar este peróxido" onClick={() => setPeroxRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
                   </div>
-                ))}
-                <button className="btn sm" style={{ width: '100%' }} onClick={() => setPeroxRows(r => [...r, { vol: 20, g: 30 }])}>＋ Agregar otro peróxido</button>
-              </div>
-              <div className="field"><label>Aditivo extra (opcional)</label>
-                <select value={extra} onChange={e => setExtra(e.target.value)}>
-                  <option value="">Ninguno</option>
-                  <option value="000">KÜÜL 000 Reforzador (partes iguales)</option>
-                  <option value="olaplex">Olaplex 4 en 1 (4 g)</option>
-                  <option value="matiz">Gotas de matiz (2 g)</option>
-                </select>
-              </div>
+                </div>
+              ))}
+              {peroxRows.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem', marginBottom: 8 }}>Sin peróxido (aplicación directa).</p>}
+              <button className="btn sm" style={{ width: '100%' }} onClick={() => setPeroxRows(r => [...r, { vol: 20, g: 30, product_id: '' }])}>＋ Agregar peróxido</button>
             </div>
           )}
+
+          {/* Aditivos del inventario (clase Aditivo / Reforzador) */}
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h3 style={{ fontSize: '1rem' }}>Aditivo extra (opcional)</h3>
+            </div>
+            <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 8px' }}>Aditivos y reforzadores de tu inventario. Toca para agregar y ajusta los gramos.</p>
+            {additiveCat.map(p => {
+              const sel = extraAdds.find(a => a.product.id === p.id);
+              return (
+                <div key={p.id} className="comp-row">
+                  <button className={'pill' + (sel ? ' sel' : '')} style={{ flex: 1, textAlign: 'left' }}
+                    onClick={() => {
+                      if (sel) setExtraAdds(a => a.filter(x => x.product.id !== p.id));
+                      else setExtraAdds(a => [...a, { product: p, g: 5 }]);
+                    }}>
+                    {sel ? '✓ ' : '＋ '}{p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
+                  </button>
+                  {sel && (
+                    <>
+                      <input type="number" inputMode="decimal" value={sel.g} style={{ width: 64, textAlign: 'center', background: 'var(--surface2)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--text)', minHeight: 40 }}
+                        onChange={e => setExtraAdds(a => a.map(x => x.product.id === p.id ? { ...x, g: Number(e.target.value) || 0 } : x))} />
+                      <span style={{ color: 'var(--muted)', fontSize: '.8rem' }}>g</span>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {additiveCat.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>No hay productos de clase Aditivo o Reforzador en tu inventario.</p>}
+          </div>
+
           <div className="card">
             <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Se pesará en este orden</h3>
             {builtComps.map((c, i) => (
@@ -876,14 +924,13 @@ export default function ColorBar() {
           <Modal open={showAdd} onClose={() => setShowAdd(false)}>
             <h3 style={{ marginBottom: 6 }}>Agregar a la mezcla</h3>
             <p style={{ color: 'var(--muted)', fontSize: '.85rem', margin: '0 0 14px' }}>Se añade a la cola de pesaje sin perder lo ya pesado.</p>
-            <div className="row" style={{ marginBottom: 10 }}>
-              <button className="btn" onClick={() => addMidComp('olaplex')}>Olaplex 4 en 1 · 4 g</button>
-              <button className="btn" onClick={() => addMidComp('matiz')}>Gotas de matiz · 2 g</button>
+            <div style={{ maxHeight: 220, overflow: 'auto', marginBottom: 10 }}>
+              {additiveCat.map(p => (
+                <button key={p.id} className="btn" style={{ width: '100%', marginBottom: 6, textAlign: 'left' }}
+                  onClick={() => addMidComp('aditivo', p.name, 5, p)}>＋ {p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span></button>
+              ))}
             </div>
-            <div className="row" style={{ marginBottom: 14 }}>
-              <button className="btn" onClick={() => addMidComp('000')}>KÜÜL 000 Reforzador</button>
-              <button className="btn" onClick={() => addMidComp('perox')}>Más peróxido · 20 g</button>
-            </div>
+            <button className="btn" style={{ width: '100%', marginBottom: 14 }} onClick={() => addMidComp('perox')}>Más peróxido · 20 g</button>
             <AddOtherForm onAdd={(n, g) => addMidComp('otro', n, g)} />
             <button className="btn warn" style={{ width: '100%', marginBottom: 8 }} onClick={() => { setShowAdd(false); go(3); }}>✎ Volver a editar toda la fórmula</button>
             <button className="btn ghost" style={{ width: '100%' }} onClick={() => setShowAdd(false)}>Cerrar</button>
