@@ -8,21 +8,25 @@ export function useSaleExtras() {
   const [products, setProducts] = useState([]); // {id,name,price,cost,gift}
   const [discountPct, setDiscountPct] = useState(0);
   const [payMethod, setPayMethod] = useState('efectivo');
-  return { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod };
+  const [serviceMode, setServiceMode] = useState('charge'); // 'charge' | 'gift' | 'removed'
+  return { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode };
 }
 
 // Calcula el desglose completo del cobro
-export function computeBreakdown({ serviceSubtotal, products, discountPct, payMethod, suppliesCost = 0 }) {
+export function computeBreakdown({ serviceSubtotal, serviceMode = 'charge', products, discountPct, payMethod, suppliesCost = 0 }) {
+  const svc = Number(serviceSubtotal || 0);
+  const effectiveService = serviceMode === 'charge' ? svc : 0;
+  const serviceGiftValue = serviceMode === 'gift' ? svc : 0;
   const productsGross = products.reduce((a, p) => a + (p.gift ? 0 : Number(p.price || 0)), 0);
-  const giftValue = products.filter(p => p.gift).reduce((a, p) => a + Number(p.price || 0), 0);
+  const giftValue = products.filter(p => p.gift).reduce((a, p) => a + Number(p.price || 0), 0) + serviceGiftValue;
   const productsCost = products.reduce((a, p) => a + Number(p.cost || 0), 0); // costo de TODOS (vendidos o regalados)
-  const beforeDiscount = Number(serviceSubtotal || 0) + productsGross;
+  const beforeDiscount = effectiveService + productsGross;
   const discountAmount = beforeDiscount * (Number(discountPct || 0) / 100);
   const total = Math.max(0, beforeDiscount - discountAmount);
   const cardCost = payMethod === 'tarjeta' ? total * CARD_FEE : 0;
   const realCost = productsCost + Number(suppliesCost || 0) + cardCost;
   const utilidad = total - realCost;
-  return { productsGross, giftValue, productsCost, beforeDiscount, discountAmount, total, cardCost, realCost, utilidad };
+  return { productsGross, giftValue, productsCost, beforeDiscount, discountAmount, total, cardCost, realCost, utilidad, effectiveService };
 }
 
 // Buscador y selector de productos de venta (type='producto')
@@ -86,9 +90,9 @@ export function ProductPicker({ products, setProducts, label = 'Productos de ven
 // Resumen de cobro con desglose, descuento, sugerido y método de pago
 export function CheckoutSummary({
   serviceSubtotal, products, discountPct, setDiscountPct, payMethod, setPayMethod,
-  suppliesCost = 0, suggested = 0,
+  suppliesCost = 0, suggested = 0, serviceMode = 'charge', setServiceMode = null, serviceLabel = 'Servicio',
 }) {
-  const b = computeBreakdown({ serviceSubtotal, products, discountPct, payMethod, suppliesCost });
+  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost });
   const fmt = n => '$' + Math.round(n).toLocaleString('es-MX');
   return (
     <>
@@ -120,7 +124,22 @@ export function CheckoutSummary({
             💡 Precio sugerido (según insumos y productos): <b>{fmt(suggested)}</b> · es solo referencia, tú decides el precio final.
           </div>
         )}
-        <div className="total-line"><span>Servicio</span><span className="num">{fmt(serviceSubtotal)}</span></div>
+        <div className="total-line" style={{ alignItems: 'center', opacity: serviceMode === 'removed' ? .45 : 1 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+            {serviceLabel}
+            {serviceMode === 'gift' && <span className="tag ok">REGALO</span>}
+            {serviceMode === 'removed' && <span className="tag" style={{ color: 'var(--muted)' }}>QUITADO</span>}
+            {setServiceMode && (
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                <button className={'btn ghost sm' + (serviceMode === 'gift' ? ' ok' : '')} title="Regalar el servicio"
+                  onClick={() => setServiceMode(m => m === 'gift' ? 'charge' : 'gift')}>🎁</button>
+                <button className={'btn ghost sm' + (serviceMode === 'removed' ? ' danger' : '')} title="Quitar el servicio del cobro"
+                  onClick={() => setServiceMode(m => m === 'removed' ? 'charge' : 'removed')}>✕</button>
+              </span>
+            )}
+          </span>
+          <span className="num" style={{ textDecoration: serviceMode !== 'charge' ? 'line-through' : 'none' }}>{fmt(serviceSubtotal)}</span>
+        </div>
         <div className="total-line"><span>Productos</span><span className="num">{fmt(b.productsGross)}</span></div>
         {b.giftValue > 0 && <div className="total-line" style={{ color: 'var(--ok)' }}><span>🎁 Regalado (no se cobra)</span><span className="num">−{fmt(b.giftValue)}</span></div>}
         {b.discountAmount > 0 && <div className="total-line" style={{ color: 'var(--ok)' }}><span>Descuento {discountPct}%</span><span className="num">−{fmt(b.discountAmount)}</span></div>}

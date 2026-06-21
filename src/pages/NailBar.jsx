@@ -20,7 +20,7 @@ export default function NailBar() {
   const [size, setSize] = useState(4);
   const [design, setDesign] = useState('Sencillo');
   const [price, setPrice] = useState('');
-  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod } = useSaleExtras();
+  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode } = useSaleExtras();
   const [screen, setScreen] = useState(1);
   const [toast, setToast] = useToast();
   const [busy, setBusy] = useState(false);
@@ -39,16 +39,17 @@ export default function NailBar() {
 
   const filtered = clients.filter(c => (c.full_name || '').toLowerCase().includes(q.toLowerCase()));
   const serviceSubtotal = Number(price || 0);
-  const b = computeBreakdown({ serviceSubtotal, products, discountPct, payMethod, suppliesCost: 0 });
+  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost: 0 });
 
   async function charge() {
-    if (!price || busy) return setToast('Pon el precio del servicio');
+    if (busy) return;
+    if (serviceMode === 'charge' && !price && !products.length) return setToast('Pon el precio del servicio o agrega productos');
     setBusy(true);
     try {
       const { data: sale, error } = await supabase.from('sales').insert({
         user_id: activeArtist.id, client_id: client?.id || null,
         service_name: `Uñas ${design} · ${brand} · tamaño ${size}`,
-        service_price: serviceSubtotal, subtotal: b.beforeDiscount, total: b.total,
+        service_price: b.effectiveService, subtotal: b.beforeDiscount, total: b.total,
         payment_method: payMethod,
         financial_cost: Math.round(b.realCost),
         products_cost: Math.round(b.productsCost), supplies_cost: 0, card_cost: Math.round(b.cardCost),
@@ -124,7 +125,9 @@ export default function NailBar() {
           <CheckoutSummary
             serviceSubtotal={serviceSubtotal} products={products}
             discountPct={discountPct} setDiscountPct={setDiscountPct}
-            payMethod={payMethod} setPayMethod={setPayMethod} suppliesCost={0} />
+            payMethod={payMethod} setPayMethod={setPayMethod}
+            serviceMode={serviceMode} setServiceMode={setServiceMode} serviceLabel="Servicio de uñas"
+            suppliesCost={0} />
 
           <button className="btn xl primary" style={{ width: '100%' }} onClick={charge} disabled={busy}>
             {busy ? 'Cobrando…' : `💅 Cobrar $${b.total.toLocaleString()}`}

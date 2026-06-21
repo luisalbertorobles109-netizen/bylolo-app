@@ -2,26 +2,19 @@
 
 ## NUEVO en esta versión
 
-### Módulo Servicios — submenús
-- Tipos: Corte de pelo, Tratamiento, Peinado, Otro servicio.
-- "Otro servicio": solo pide el nombre del servicio.
-- "Corte de pelo" y "Peinado": la mezcla muestra solo insumos de clase TRATAMIENTO y ESTILIZADO.
-- "Tratamiento" despliega: Alisado / Otro.
-   - Alisado → insumos de clase ALISADO.
-   - Otro → Tratamiento (insumos clase TRATAMIENTO) o Color (marca + tono + peróxido).
+### Gota visual al pesar (Servicios y Barra de Color)
+- Al pesar cualquier insumo, tratamiento, color, peróxido o decolorante, ahora se
+  muestra la gota que se llena en vivo. En Servicios la gota toma el color del producto.
 
-### Barra de Color
-- PERÓXIDO: en "Personalizada" puedes elegir la MARCA y volumen del peróxido (KÜÜL o
-  Tec Italy), agregar varios, o quitarlo con la ✕.
-- ADITIVO EXTRA: ahora muestra solo tus insumos reales de clase ADITIVO y REFORZADOR
-  (ya no aparece "Gotas de matiz" ni opciones que no tienes).
+### Barra de Color — Aditivo Extra contraído
+- La sección "Aditivo extra (opcional)" aparece CERRADA, con un botón "＋ Agregar".
+  Solo se abre si el artista va a usar un aditivo. Si ya agregó alguno, muestra el resumen.
 
-## Clases nuevas en tu inventario (Excel)
-Para que todo aparezca bien, clasifica tus productos en la columna "Clase":
-- Estilizado  → para productos de peinado/corte
-- Reforzador  → para reforzadores (aparecen junto a Aditivo en Barra de Color)
-- Alisado     → para productos de alisado
-(Las que ya usabas siguen igual: Tinte, Peroxido, Decolorante, Aditivo, Tratamiento…)
+### Cobro — quitar o regalar el Servicio
+- En el resumen de cobro, la línea "Servicio" tiene dos botones:
+   🎁  regalar el servicio (no se cobra, queda registrado como cortesía)
+   ✕   quitar el servicio del cobro (por si solo se venden productos)
+- Aplica en Servicios, Barra de Uñas y Barra de Color (regalo por servicio en la lista).
 
 ## Probar
 1. Borra la carpeta vieja antes de descomprimir esta.

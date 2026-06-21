@@ -203,6 +203,7 @@ export default function ColorBar() {
   const [diag, setDiag] = useState(false);
   const [diagLog, setDiagLog] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [showExtras, setShowExtras] = useState(false);
 
   // ---- Restaurar sesión en curso (para volver al paso tras salir o recargar) ----
   useEffect(() => {
@@ -436,9 +437,10 @@ export default function ColorBar() {
   const treatmentCost = treatments.reduce((a, t) => a + (Number(t.grams) || 0) * (Number(t.product.cost) / (Number(t.product.gramos_por_pieza) || 1)), 0);
   const insumosCost = [...doneSteps, ...(weighComps.length ? [currentStepObj()] : [])]
     .reduce((a, st) => a + st.comps.reduce((x, c) => x + (c.actual_g || c.g) * (c.cost || 0), 0), 0) + allSupplyCost + treatmentCost;
-  const totSvc = services.reduce((a, b) => a + Number(b.price), 0);
+  const totSvc = services.reduce((a, b) => a + (b.is_gift ? 0 : Number(b.price)), 0);
+  const svcGiftValue = services.filter(s => s.is_gift).reduce((a, b) => a + Number(b.price), 0);
   const totProdBruto = prods.reduce((a, b) => a + Number(b.price), 0);
-  const giftDiscount = prods.filter(p => p.is_gift).reduce((a, b) => a + Number(b.price), 0);
+  const giftDiscount = prods.filter(p => p.is_gift).reduce((a, b) => a + Number(b.price), 0) + svcGiftValue;
   const giftCost = prods.filter(p => p.is_gift).reduce((a, b) => a + Number(b.cost || 0), 0);
   const prodsCostAll = prods.reduce((a, b) => a + Number(b.cost || 0), 0); // costo de TODOS los productos
   const totProd = totProdBruto - giftDiscount;
@@ -462,7 +464,7 @@ export default function ColorBar() {
       }).select().single();
       if (e1) throw e1;
       const items = [
-        ...services.map(s => ({ sale_id: sale.id, item_type: 'servicio', name: s.name, quantity: 1, unit_price: s.price, total_price: s.price })),
+        ...services.map(s => ({ sale_id: sale.id, item_type: 'servicio', name: s.name, quantity: 1, unit_price: s.price, total_price: s.is_gift ? 0 : s.price, is_gift: !!s.is_gift })),
         ...prods.map(p => ({ sale_id: sale.id, item_type: 'producto', product_id: p.id || null, name: p.name, quantity: 1, unit_price: p.price, total_price: p.is_gift ? 0 : p.price, is_gift: !!p.is_gift, gift_cost: p.is_gift ? Number(p.cost || 0) : 0 })),
       ];
       if (items.length) await supabase.from('sale_items').insert(items);
@@ -824,34 +826,46 @@ export default function ColorBar() {
             </div>
           )}
 
-          {/* Aditivos del inventario (clase Aditivo / Reforzador) */}
+          {/* Aditivos del inventario (clase Aditivo / Reforzador) — contraído */}
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: '1rem' }}>Aditivo extra (opcional)</h3>
+              <button className="btn sm" onClick={() => setShowExtras(s => !s)}>
+                {showExtras ? 'Cerrar' : (extraAdds.length ? `${extraAdds.length} agregado(s) ✎` : '＋ Agregar')}
+              </button>
             </div>
-            <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 8px' }}>Aditivos y reforzadores de tu inventario. Toca para agregar y ajusta los gramos.</p>
-            {additiveCat.map(p => {
-              const sel = extraAdds.find(a => a.product.id === p.id);
-              return (
-                <div key={p.id} className="comp-row">
-                  <button className={'pill' + (sel ? ' sel' : '')} style={{ flex: 1, textAlign: 'left' }}
-                    onClick={() => {
-                      if (sel) setExtraAdds(a => a.filter(x => x.product.id !== p.id));
-                      else setExtraAdds(a => [...a, { product: p, g: 5 }]);
-                    }}>
-                    {sel ? '✓ ' : '＋ '}{p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
-                  </button>
-                  {sel && (
-                    <>
-                      <input type="number" inputMode="decimal" value={sel.g} style={{ width: 64, textAlign: 'center', background: 'var(--surface2)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--text)', minHeight: 40 }}
-                        onChange={e => setExtraAdds(a => a.map(x => x.product.id === p.id ? { ...x, g: Number(e.target.value) || 0 } : x))} />
-                      <span style={{ color: 'var(--muted)', fontSize: '.8rem' }}>g</span>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-            {additiveCat.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>No hay productos de clase Aditivo o Reforzador en tu inventario.</p>}
+            {!showExtras && extraAdds.length > 0 && (
+              <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '8px 0 0' }}>
+                {extraAdds.map(a => `${a.product.name} (${a.g}g)`).join(' · ')}
+              </p>
+            )}
+            {showExtras && (
+              <>
+                <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '8px 0' }}>Aditivos y reforzadores de tu inventario. Toca para agregar y ajusta los gramos.</p>
+                {additiveCat.map(p => {
+                  const sel = extraAdds.find(a => a.product.id === p.id);
+                  return (
+                    <div key={p.id} className="comp-row">
+                      <button className={'pill' + (sel ? ' sel' : '')} style={{ flex: 1, textAlign: 'left' }}
+                        onClick={() => {
+                          if (sel) setExtraAdds(a => a.filter(x => x.product.id !== p.id));
+                          else setExtraAdds(a => [...a, { product: p, g: 5 }]);
+                        }}>
+                        {sel ? '✓ ' : '＋ '}{p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
+                      </button>
+                      {sel && (
+                        <>
+                          <input type="number" inputMode="decimal" value={sel.g} style={{ width: 64, textAlign: 'center', background: 'var(--surface2)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--text)', minHeight: 40 }}
+                            onChange={e => setExtraAdds(a => a.map(x => x.product.id === p.id ? { ...x, g: Number(e.target.value) || 0 } : x))} />
+                          <span style={{ color: 'var(--muted)', fontSize: '.8rem' }}>g</span>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {additiveCat.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>No hay productos de clase Aditivo o Reforzador en tu inventario.</p>}
+              </>
+            )}
           </div>
 
           <div className="card">
@@ -1066,7 +1080,10 @@ export default function ColorBar() {
             <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Servicios realizados</h3>
             {services.map((s, i) => (
               <div key={i} className="comp-row">
-                <div className="cname">{s.name}</div><div className="cgr num">${Number(s.price)}</div>
+                <div className="cname">{s.name}{s.is_gift && <span className="tag ok" style={{ marginLeft: 6 }}>REGALO</span>}</div>
+                <div className="cgr num" style={{ textDecoration: s.is_gift ? 'line-through' : 'none', opacity: s.is_gift ? .5 : 1 }}>${Number(s.price)}</div>
+                <button className={'btn ghost sm' + (s.is_gift ? ' ok' : '')} title="Regalar este servicio"
+                  onClick={() => setServices(x => x.map((y, j) => j === i ? { ...y, is_gift: !y.is_gift } : y))}>🎁</button>
                 <button className="btn ghost sm" onClick={() => setServices(x => x.filter((_, j) => j !== i))}>✕</button>
               </div>
             ))}

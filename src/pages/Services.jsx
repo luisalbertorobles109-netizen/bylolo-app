@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { Shell } from '../App';
 import { Toast, useToast } from '../components/UI';
 import { connectSkale } from '../lib/scale';
+import { toneColor } from '../lib/colorRules';
+import DropGauge from '../components/DropGauge';
 import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts } from '../components/Checkout';
 
 const CARD_FEE = 0.036;
@@ -23,7 +25,7 @@ export default function Services() {
   const [colorBrand, setColorBrand] = useState('');
   const [customName, setCustomName] = useState('');
   const [price, setPrice] = useState('');
-  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod } = useSaleExtras();
+  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode } = useSaleExtras();
   const [screen, setScreen] = useState(1);
   const [supplies, setSupplies] = useState([]);
   const [used, setUsed] = useState([]);          // [{product, grams}]
@@ -118,7 +120,7 @@ export default function Services() {
   const suggestedProducts = products.reduce((a, p) => a + (p.gift ? 0 : Number(p.price || 0)), 0);
   const suggested = Math.round(suggestedFromSupplies + suggestedProducts);
   const serviceSubtotal = Number(price || 0);
-  const b = computeBreakdown({ serviceSubtotal, products, discountPct, payMethod, suppliesCost: insumosCost });
+  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost: insumosCost });
 
   // ---- báscula ----
   function tare(silent) {
@@ -152,12 +154,13 @@ export default function Services() {
   }
 
   async function charge() {
-    if (!price || busy) return setToast('Pon el precio del servicio');
+    if (busy) return;
+    if (serviceMode === 'charge' && !price && !products.length) return setToast('Pon el precio del servicio o agrega productos');
     setBusy(true);
     try {
       const { data: sale, error } = await supabase.from('sales').insert({
         user_id: activeArtist.id, client_id: client?.id || null,
-        service_name: serviceName, service_price: serviceSubtotal,
+        service_name: serviceName, service_price: b.effectiveService,
         subtotal: b.beforeDiscount, total: b.total,
         payment_method: payMethod, financial_cost: Math.round(b.realCost),
         products_cost: Math.round(b.productsCost), supplies_cost: Math.round(insumosCost), card_cost: Math.round(b.cardCost),
@@ -190,15 +193,27 @@ export default function Services() {
   // ---- pantalla de báscula ----
   if (weighIdx !== null) {
     const u = used[weighIdx];
+    const cls = (u?.product?.class || '').toLowerCase();
+    const dropColor = cls === 'tinte' ? toneColor(u.product.name, u.product.gama)
+      : cls === 'peroxido' ? '#f2b33d'
+      : cls === 'decolorante' ? '#ece2c6'
+      : (cls === 'aditivo' || cls === 'reforzador') ? '#cfd6f5'
+      : '#5ec8b0';
     return (
       <Shell title="Báscula" sub={u?.product?.name || 'Pesar insumo'}>
         <div className="screen" style={{ paddingBottom: 40, textAlign: 'center' }}>
           <h2>Pesar: {u?.product?.name}</h2>
           <p className="lead">Pon el recipiente, dale Tara, y vierte el producto. {bleOn ? 'Báscula conectada.' : 'Sin báscula: mantén presionado “Verter” para simular.'}</p>
-          <div className="scale-readout">
-            <span className="dot-live" style={{ background: bleOn ? '#46d39a' : '#888' }} />
-            <div className="scale-grams num">{curGrams.toFixed(1)} <small>g</small></div>
+
+          <div className="card scale-wrap">
+            <div className="scale-status">
+              <span className={'dot-live' + (bleOn ? ' on' : '')} />
+              <span>{bleOn ? 'SKALE 2 conectada · lectura en vivo' : 'Báscula no conectada · usando simulador'}</span>
+            </div>
+            <DropGauge grams={curGrams} color={dropColor} />
+            <div className="gram-counter num">{curGrams.toFixed(1)}<small> g</small></div>
           </div>
+
           <div className="row" style={{ justifyContent: 'center', marginBottom: 12 }}>
             {!bleOn && <button className="btn primary" style={{ minWidth: 160 }}
               onMouseDown={startPour} onMouseUp={stopPour} onMouseLeave={stopPour}
@@ -375,6 +390,7 @@ export default function Services() {
             serviceSubtotal={serviceSubtotal} products={products}
             discountPct={discountPct} setDiscountPct={setDiscountPct}
             payMethod={payMethod} setPayMethod={setPayMethod}
+            serviceMode={serviceMode} setServiceMode={setServiceMode} serviceLabel={serviceName}
             suppliesCost={insumosCost} suggested={suggested} />
 
           <button className="btn xl primary" style={{ width: '100%' }} onClick={charge} disabled={busy}>
