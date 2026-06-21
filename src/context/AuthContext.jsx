@@ -14,6 +14,8 @@ export function AuthProvider({ children }) {
   const [activeArtist, setActiveArtist] = useState(() => {
     try { return JSON.parse(localStorage.getItem(ACTIVE_KEY) || 'null'); } catch { return null; }
   });
+  // PIN de admin solo en memoria (no se guarda en disco) para autorizar acciones de gestión
+  const [adminPin, setAdminPin] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
@@ -49,6 +51,8 @@ export function AuthProvider({ children }) {
     activeArtist,                       // el artista que fichó (o null si está en el panel de selección)
     profile: activeArtist,              // alias para compatibilidad con el resto de la app
     isAdmin: activeArtist?.role === 'Admin',
+    adminPin,                           // PIN de admin en memoria (para acciones de gestión)
+    setAdminPin,
     selectArtist,
     exitArtist,
     signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),

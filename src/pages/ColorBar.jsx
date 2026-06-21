@@ -6,6 +6,7 @@ import { Shell } from '../App';
 import { Modal, Toast, useToast } from '../components/UI';
 import { FALLBACK_RULES, suggestVol, toneColor, targetLevelOf, classifyTone, funnyLevel } from '../lib/colorRules';
 import { connectSkale } from '../lib/scale';
+import { useTimer } from '../context/TimerContext';
 
 const STEPS_BAR = ['1 Cliente', '2 Colores', '3 Fórmula', '4 Báscula', '⏱ Tiempo', '5 Resumen', '6 Cobro'];
 const TOL = 1.0;
@@ -15,8 +16,12 @@ const LEVEL_NAMES = ['Negro', 'C.E.Osc', 'C.Osc', 'Cast.', 'C.Claro', 'R.Osc', '
 export default function ColorBar() {
   const nav = useNavigate();
   const location = useLocation();
-  const { session, profile } = useAuth();
+  const { session, profile, activeArtist } = useAuth();
+  const tmr = useTimer();
   const [toast, setToast] = useToast();
+  const SESSION_KEY = 'bylolo_color_session';
+  const restoredRef = useRef(false);
+  const readyRef = useRef(false);
 
   // ---------- catálogos ----------
   const [clients, setClients] = useState([]);
@@ -48,10 +53,10 @@ export default function ColorBar() {
   const [prods, setProds] = useState([]);
   const [savedJobId, setSavedJobId] = useState(null);
   const [payMethod, setPayMethod] = useState('efectivo');
+  const [discountPct, setDiscountPct] = useState(0);
   const [nextAppt, setNextAppt] = useState(null);
   const [showNextAppt, setShowNextAppt] = useState(false);
   const [busy, setBusy] = useState(false);
-
   // ---------- carga inicial ----------
   useEffect(() => {
     (async () => {
@@ -174,6 +179,36 @@ export default function ColorBar() {
   const [diag, setDiag] = useState(false);
   const [diagLog, setDiagLog] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+
+  // ---- Restaurar sesión en curso (para volver al paso tras salir o recargar) ----
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    if (location.state?.clientId) { readyRef.current = true; return; }
+    try {
+      const snap = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+      if (snap && snap.client) {
+        setClient(snap.client); setAppointmentId(snap.appointmentId || null);
+        setBrandView(snap.brandView || 'KULL'); setGamaView(snap.gamaView || '');
+        setMix(snap.mix || []); setBaseLevel(snap.baseLevel ?? 5); setMode(snap.mode || 'sugerida');
+        setPeroxRows(snap.peroxRows || []); setExtra(snap.extra || '');
+        setDoneSteps(snap.doneSteps || []); setSvcItems(snap.svcItems || []);
+        setTreatments(snap.treatments || []); setServices(snap.services || []); setProds(snap.prods || []);
+        setWeighComps(snap.weighComps || []); setWeights(snap.weights || []); setCompIdx(snap.compIdx || 0);
+        setSavedJobId(snap.savedJobId || null); setDiscountPct(snap.discountPct || 0); setPayMethod(snap.payMethod || 'efectivo');
+        setScreen(snap.screen || 2);
+        setToast('↩ Se restauró el servicio en curso');
+      }
+    } catch (e) {}
+    readyRef.current = true;
+  }, []);
+
+  // ---- Guardar sesión cuando cambian los datos del trabajo ----
+  useEffect(() => {
+    if (!readyRef.current || !client) return;
+    const snap = { screen, client, appointmentId, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) {}
+  }, [screen, client, appointmentId, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod]);
   const simRef = useRef(0);
   const pourRef = useRef(false);
   const rafRef = useRef(null);
@@ -261,24 +296,12 @@ export default function ColorBar() {
     setShowAdd(false); setToast('＋ ' + c.name + ' agregado a la cola');
   }
 
-  // ---------- temporizador ----------
-  const [timerSecs, setTimerSecs] = useState(0);
-  const [timerLeft, setTimerLeft] = useState(0);
-  const [timerOn, setTimerOn] = useState(false);
-  const [timerAlert, setTimerAlert] = useState(false);
-  useEffect(() => {
-    if (!timerOn) return;
-    const int = setInterval(() => setTimerLeft(t => {
-      if (t <= 1) {
-        clearInterval(int); setTimerOn(false); setTimerAlert(true);
-        for (let i = 0; i < 6; i++) setTimeout(() => beep(990, .3), i * 600);
-        if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
-        return 0;
-      }
-      return t - 1;
-    }), 1000);
-    return () => clearInterval(int);
-  }, [timerOn]);
+  // ---------- temporizador (global persistente) ----------
+  // dur/left/running/alert vienen del contexto global; sobreviven navegación y recarga.
+  const timerSecs = tmr.dur;
+  const timerLeft = tmr.left;
+  const timerOn = tmr.running;
+  const timerAlert = tmr.alert;
   const fmtT = (s) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, '0')}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
 
   // ---------- pasos / guardar ----------
@@ -295,9 +318,18 @@ export default function ColorBar() {
     setDoneSteps(s => [...s, currentStepObj()]);
     setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
     setWeighComps([]); setWeights([]); setCompIdx(0);
-    setTimerSecs(0); setTimerLeft(0); setTimerOn(false); setTimerAlert(false);
-    setToast(`Paso ${doneSteps.length + 2}: elige los colores de la siguiente aplicación`);
+    tmr.reset();
+    setToast(`Etapa ${doneSteps.length + 2}: elige los colores de la siguiente aplicación`);
     setScreen(2);
+  }
+  function discardSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    tmr.clear();
+    setClient(null); setAppointmentId(null); setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
+    setDoneSteps([]); setSvcItems([]); setTreatments([]); setServices([]); setProds([]);
+    setWeighComps([]); setWeights([]); setCompIdx(0); setSavedJobId(null); setDiscountPct(0); setPayMethod('efectivo');
+    setScreen(1);
+    setToast('Servicio descartado');
   }
   async function saveWork() {
     if (busy) return;
@@ -378,8 +410,11 @@ export default function ColorBar() {
   const totProdBruto = prods.reduce((a, b) => a + Number(b.price), 0);
   const giftDiscount = prods.filter(p => p.is_gift).reduce((a, b) => a + Number(b.price), 0);
   const giftCost = prods.filter(p => p.is_gift).reduce((a, b) => a + Number(b.cost || 0), 0);
+  const prodsCostAll = prods.reduce((a, b) => a + Number(b.cost || 0), 0); // costo de TODOS los productos
   const totProd = totProdBruto - giftDiscount;
-  const totalCobrar = totSvc + totProd;
+  const beforeDiscount = totSvc + totProd;
+  const discountAmount = beforeDiscount * (Number(discountPct || 0) / 100);
+  const totalCobrar = Math.max(0, beforeDiscount - discountAmount);
   const cardFee = payMethod === 'tarjeta' ? totalCobrar * CARD_FEE : 0;
 
   async function chargeAll() {
@@ -389,8 +424,10 @@ export default function ColorBar() {
       const { data: sale, error: e1 } = await supabase.from('sales').insert({
         user_id: activeArtist.id, client_id: client.id, appointment_id: appointmentId,
         service_name: services.map(s => s.name).join(' + ') || 'Barra de Color',
-        service_price: totSvc, subtotal: totSvc + totProd, total: totalCobrar,
-        financial_cost: Math.round(insumosCost + cardFee + giftCost), payment_method: payMethod,
+        service_price: totSvc, subtotal: beforeDiscount, total: totalCobrar,
+        financial_cost: Math.round(insumosCost + cardFee + prodsCostAll), payment_method: payMethod,
+        products_cost: Math.round(prodsCostAll), supplies_cost: Math.round(insumosCost), card_cost: Math.round(cardFee),
+        discount_pct: discountPct, gift_value: Math.round(giftDiscount),
         notes: 'Barra de Color' + (payMethod === 'tarjeta' ? ` · comisión tarjeta $${cardFee.toFixed(0)}` : '') + (giftCost > 0 ? ` · regalos costo $${giftCost.toFixed(0)}` : ''),
       }).select().single();
       if (e1) throw e1;
@@ -410,6 +447,8 @@ export default function ColorBar() {
         });
       }
       setToast(`💵 Cobrado $${totalCobrar.toLocaleString()} · visita cerrada`);
+      try { localStorage.removeItem('bylolo_color_session'); } catch (e) {}
+      tmr.clear();
       setTimeout(() => nav('/'), 1600);
     } catch (err) { setToast('⚠ ' + err.message); } finally { setBusy(false); }
   }
@@ -450,6 +489,7 @@ export default function ColorBar() {
         {(timerOn || timerAlert) && (
           <button className={'chip-timer num' + (timerAlert ? ' alert' : '')} onClick={() => go(5)}>⏱ {fmtT(timerLeft)}</button>
         )}
+        {client && <button className="iconbtn" title="Descartar servicio en curso" onClick={discardSession}>✕</button>}
       </>}>
       <div className="steps">
         {STEPS_BAR.map((s, i) => (
@@ -710,24 +750,35 @@ export default function ColorBar() {
       {screen === 5 && (
         <section className="screen">
           <h2>Temporizador de pose</h2>
-          <p className="lead">Botones grandes para guantes. Suena y vibra al terminar. El tiempo se registra en el paso.</p>
+          <p className="lead">Botones grandes para guantes. Suena y vibra al terminar. Si sales a otro módulo, aparece una burbuja flotante para volver aquí.</p>
           <div className={'timer-display num' + (timerAlert ? ' alert' : '')}>{fmtT(timerLeft)}</div>
           <div className="preset-grid">
             {(R.timer_presets || []).map(p => (
-              <button key={p.m} className="btn xl" onClick={() => { setTimerSecs(p.m * 60); setTimerLeft(p.m * 60); setTimerAlert(false); }}>{p.l}</button>
+              <button key={p.m} className="btn xl" onClick={() => tmr.setPreset(p.m * 60, { label: client?.full_name || 'Pose', returnPath: '/color' })}>{p.l}</button>
             ))}
           </div>
           <div className="row" style={{ marginBottom: 12 }}>
-            <button className="btn xl" onClick={() => { setTimerLeft(t => t + 300); setTimerSecs(s => Math.max(s, timerLeft + 300)); }}>＋5 min</button>
-            <button className="btn xl" onClick={() => { setTimerLeft(t => t + 60); setTimerSecs(s => Math.max(s, timerLeft + 60)); }}>＋1 min</button>
+            <button className="btn xl" onClick={() => tmr.addSecs(300)}>＋5 min</button>
+            <button className="btn xl" onClick={() => tmr.addSecs(60)}>＋1 min</button>
           </div>
           <div className="row">
             <button className={'btn xl ' + (timerOn ? 'warn' : 'ok')} onClick={() => {
               if (timerLeft <= 0) return setToast('Elige un tiempo primero');
-              setTimerOn(o => !o); setTimerAlert(false);
+              tmr.toggle({ label: client?.full_name || 'Pose', returnPath: '/color' });
             }}>{timerOn ? '⏸ Pausa' : '▶ Iniciar'}</button>
-            <button className="btn xl danger" onClick={() => { setTimerOn(false); setTimerLeft(0); setTimerSecs(0); setTimerAlert(false); }}>■ Reiniciar</button>
+            <button className="btn xl danger" onClick={() => tmr.reset()}>■ Reiniciar</button>
           </div>
+          {timerAlert && (
+            <div className="card" style={{ marginTop: 14, textAlign: 'center', borderColor: 'var(--ok)' }}>
+              <h3 style={{ marginBottom: 10 }}>✅ ¡Tiempo terminado!</h3>
+              <p style={{ color: 'var(--muted)', fontSize: '.86rem', marginBottom: 12 }}>¿Qué sigue con {client?.full_name || 'el cliente'}?</p>
+              <div className="row" style={{ flexWrap: 'wrap' }}>
+                <button className="btn xl" onClick={() => tmr.extend(300, { label: client?.full_name || 'Pose', returnPath: '/color' })}>＋5 min más</button>
+                <button className="btn xl primary" onClick={addAnotherStep}>➕ Siguiente etapa</button>
+                <button className="btn xl ok" onClick={() => { tmr.reset(); go(6); }}>Ir al resumen →</button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -875,16 +926,38 @@ export default function ColorBar() {
             </div>
           </div>
           <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Descuento</h3>
+            <div className="pill-grid">
+              {[0, 5, 10, 15, 20, 25].map(d => (
+                <button key={d} className={'pill' + (Number(discountPct) === d ? ' sel' : '')} onClick={() => setDiscountPct(d)}>{d}%</button>
+              ))}
+            </div>
+            <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
+              <label>Otro %</label>
+              <input type="number" inputMode="decimal" value={discountPct || ''} onChange={e => setDiscountPct(Math.max(0, Math.min(100, Number(e.target.value))))} placeholder="0" />
+            </div>
+          </div>
+          <div className="card">
             <div className="total-line"><span>Servicios</span><span className="num">${totSvc.toLocaleString()}</span></div>
             <div className="total-line"><span>Productos</span><span className="num">${totProdBruto.toLocaleString()}</span></div>
             {giftDiscount > 0 && (
-              <div className="total-line" style={{ color: 'var(--ok)' }}><span>Descuento por regalos</span><span className="num">−${giftDiscount.toLocaleString()}</span></div>
+              <div className="total-line" style={{ color: 'var(--ok)' }}><span>🎁 Regalado (no se cobra)</span><span className="num">−${giftDiscount.toLocaleString()}</span></div>
             )}
-            <div className="info-cost">ℹ Costo interno de insumos + servicio: <b>${insumosCost.toFixed(0)}</b>{giftCost > 0 && <> · costo de lo regalado: <b>${giftCost.toFixed(0)}</b></>} · informativo</div>
-            {payMethod === 'tarjeta' && (
-              <div className="info-cost">ℹ Costo financiero por tarjeta ({(CARD_FEE * 100).toFixed(1)}%): <b>−${cardFee.toFixed(0)}</b> · informativo, no se cobra al cliente</div>
+            {discountAmount > 0 && (
+              <div className="total-line" style={{ color: 'var(--ok)' }}><span>Descuento {discountPct}%</span><span className="num">−${Math.round(discountAmount).toLocaleString()}</span></div>
             )}
             <div className="total-line big"><span>Total a cobrar ({payMethod})</span><span className="num">${totalCobrar.toLocaleString()}</span></div>
+            <div style={{ marginTop: 10, borderTop: '1px dashed var(--line)', paddingTop: 10 }}>
+              <p style={{ fontSize: '.72rem', color: 'var(--muted)', margin: '0 0 6px', fontWeight: 700, letterSpacing: '.04em' }}>COSTOS INTERNOS (informativo)</p>
+              <div className="info-cost">Insumos + servicio: <b>${insumosCost.toFixed(0)}</b></div>
+              {prodsCostAll > 0 && <div className="info-cost">Productos (vendidos o regalados): <b>${prodsCostAll.toFixed(0)}</b></div>}
+              {payMethod === 'tarjeta' && (
+                <div className="info-cost">Costo financiero tarjeta ({(CARD_FEE * 100).toFixed(1)}%): <b>−${cardFee.toFixed(0)}</b> · no se suma al precio</div>
+              )}
+              <div className="info-cost" style={{ borderColor: (totalCobrar - insumosCost - prodsCostAll - cardFee) >= 0 ? 'var(--ok)' : 'var(--danger)' }}>
+                Utilidad estimada: <b style={{ color: (totalCobrar - insumosCost - prodsCostAll - cardFee) >= 0 ? 'var(--ok)' : 'var(--danger)' }}>${Math.round(totalCobrar - insumosCost - prodsCostAll - cardFee).toLocaleString()}</b>
+              </div>
+            </div>
           </div>
           <button className="btn xl ok" style={{ width: '100%' }} disabled={busy} onClick={chargeAll}>
             {busy ? 'Procesando…' : '💵 Cobrar y terminar visita'}

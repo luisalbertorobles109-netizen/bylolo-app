@@ -56,7 +56,7 @@ export default function Inventory() {
           name: r.name, barcode: r.barcode || null, brand: r.brand || null,
           type: r.type || null, class: r.class || null, gama: r.gama || null,
           sku: r.sku || null, description: r.description || null,
-          cost: r.cost || 0, price: r.price || 0, min_stock: r.min_stock || 0,
+          cost: r.cost || 0, price: r.price || 0, price_per_gram: r.price_per_gram || 0, min_stock: r.min_stock || 0,
           current_stock: r.current_stock || 0, gramos_por_pieza: r.gramos_por_pieza || 0,
           status: r.status || 'Activo',
         };

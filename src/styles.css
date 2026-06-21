@@ -254,3 +254,41 @@ table.inv td{padding:8px;border-bottom:1px solid var(--line)}
 .pin-input{width:100%;text-align:center;font-size:2rem;letter-spacing:.5rem;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--surface2);color:var(--text);font-weight:700}
 
 .station.equipo{background:radial-gradient(120% 140% at 85% 10%,#8b5cf6 0%,#5b21b6 55%,#2a1245 100%)}
+
+.station.servicios{background:radial-gradient(120% 140% at 85% 10%,#0ea5e9 0%,#0c5b8a 55%,#06283d 100%)}
+
+/* ---- lectura de báscula en Servicios ---- */
+.scale-readout{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 16px;margin:16px 0}
+.scale-grams{font-size:3.4rem;font-weight:800;line-height:1;font-family:'Space Grotesk',monospace}
+.scale-grams small{font-size:1.2rem;color:var(--muted)}
+
+/* ---- layout del tablero: zona principal + columna compacta ---- */
+.dash-layout{display:flex;gap:16px;align-items:flex-start}
+.dash-layout .station-grid.main{flex:1 1 auto;margin:0}
+.compact-col{flex:0 0 180px;display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px}
+.compact-title{font-size:.72rem;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;padding:2px 4px 4px}
+.compact-item{display:flex;align-items:center;gap:10px;padding:12px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--text);cursor:pointer;transition:border-color .12s,transform .1s;text-align:left;width:100%}
+.compact-item:hover{border-color:var(--violet)}
+.compact-item:active{transform:scale(.98)}
+.ci-icon{font-size:1.2rem}
+.ci-name{font-weight:600;font-size:.92rem}
+@media(max-width:680px){
+  .dash-layout{flex-direction:column}
+  .compact-col{flex:1 1 auto;width:100%;flex-direction:row;flex-wrap:wrap}
+  .compact-title{width:100%}
+  .compact-item{flex:1 1 calc(50% - 8px);min-width:130px}
+}
+
+/* ---- burbuja flotante del temporizador ---- */
+.floating-timer{position:fixed;right:16px;bottom:16px;z-index:1200;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.ft-bubble{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:96px;padding:12px 16px;border-radius:18px;border:none;cursor:pointer;background:linear-gradient(135deg,var(--violet),var(--pigment));color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35);transition:transform .12s}
+.ft-bubble:active{transform:scale(.96)}
+.ft-bubble.run{animation:ftpulse 2s ease-in-out infinite}
+.ft-bubble.alert{background:linear-gradient(135deg,#f59e0b,#dc2626);animation:ftblink 1s steps(2,end) infinite}
+.ft-icon{font-size:1.1rem;line-height:1}
+.ft-time{font-size:1.5rem;font-weight:800;line-height:1.1}
+.ft-label{font-size:.66rem;opacity:.9;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ft-actions{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.ft-actions button{font-size:.78rem;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);color:var(--text);cursor:pointer;font-weight:600}
+@keyframes ftpulse{0%,100%{box-shadow:0 8px 24px rgba(124,58,237,.3)}50%{box-shadow:0 8px 32px rgba(124,58,237,.6)}}
+@keyframes ftblink{0%{opacity:1}50%{opacity:.7}}

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Toast, useToast, Modal } from '../components/UI';
 
 export default function SelectArtist() {
-  const { selectArtist, signOutDevice } = useAuth();
+  const { selectArtist, signOutDevice, setAdminPin } = useAuth();
   const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useToast();
@@ -35,7 +35,10 @@ export default function SelectArtist() {
     const { data, error } = await supabase.rpc('verify_member_pin', { p_id: pinFor.id, p_pin: pin });
     setBusy(false);
     if (error) return setToast('⚠ ' + error.message);
-    if (data === true) enter(pinFor);
+    if (data === true) {
+      if (pinFor.role === 'Admin') setAdminPin(pin); // recordar PIN para acciones de gestión
+      enter(pinFor);
+    }
     else { setToast('PIN incorrecto'); setPin(''); }
   }
 

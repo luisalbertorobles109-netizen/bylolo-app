@@ -42,16 +42,53 @@ const FC_COLORS = {
   'cobre': '#a85a2e', 'dorado cobrizo': '#b06a32',
 };
 const LEVEL_BASE = { 1:'#141414',2:'#2b1a12',3:'#33221a',4:'#43301f',5:'#5c452f',6:'#6f5638',7:'#8a6b42',8:'#a98a58',9:'#c8ab7c',10:'#e3d0a8',11:'#ecdfbf' };
+// Matices según el segundo dígito (sistema internacional de coloración).
+// Cada reflejo desplaza el color base hacia su familia.
+const REFLECT_TINT = {
+  '0': { r: 0, g: 0, b: 0 },        // natural
+  '1': { r: -18, g: -10, b: 2 },   // ceniza (azul/verde, apaga calidez)
+  '2': { r: -12, g: 4, b: -6 },    // irisado / violeta
+  '3': { r: 22, g: 14, b: -22 },   // dorado
+  '4': { r: 34, g: 4, b: -28 },    // cobrizo
+  '5': { r: 30, g: -10, b: -6 },   // caoba
+  '6': { r: 28, g: -22, b: -8 },   // rojo
+  '7': { r: 10, g: -6, b: -18 },   // marrón / café
+  '8': { r: -10, g: -4, b: 6 },    // perla / azulado
+  '9': { r: -16, g: -8, b: 0 },    // ceniza suave
+};
+
+function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+function hexToRgb(h) { const n = h.replace('#', ''); return { r: parseInt(n.slice(0,2),16), g: parseInt(n.slice(2,4),16), b: parseInt(n.slice(4,6),16) }; }
+function rgbToHex(r, g, b) { return '#' + [r,g,b].map(x => clamp(x).toString(16).padStart(2,'0')).join(''); }
+
 export function toneColor(name, gama) {
   const n = (name || '').toLowerCase().trim();
   if (FC_COLORS[n]) return FC_COLORS[n];
-  const m = n.match(/^(\d+)/);
+
+  // Detecta nivel y reflejo: "7.3", "7,3", "7-3", "73", "6.66", "9.1"
+  const m = n.match(/^(\d{1,3})[.,\-/]?(\d)?/);
   if (m) {
     let lvl = parseInt(m[1]);
-    if (lvl >= 100) lvl = 11; // ultraaclarantes 100/1000
+    const reflect = m[2]; // segundo dígito (primer reflejo)
+    if (lvl >= 100) lvl = 11;
     if (n === '902' || n === '000') return '#ece2c6';
-    return LEVEL_BASE[Math.min(11, Math.max(1, lvl))] || '#8a6b42';
+    const base = LEVEL_BASE[Math.min(11, Math.max(1, lvl))] || '#8a6b42';
+    if (reflect && REFLECT_TINT[reflect]) {
+      const { r, g, b } = hexToRgb(base);
+      const t = REFLECT_TINT[reflect];
+      // El efecto del reflejo es más visible en niveles claros
+      const strength = 0.6 + (lvl / 11) * 0.5;
+      return rgbToHex(r + t.r * strength, g + t.g * strength, b + t.b * strength);
+    }
+    return base;
   }
+  // Sin número: usar pistas de la gama/nombre
+  if (n.includes('ceniza') || n.includes('ash')) return '#8e8a82';
+  if (n.includes('dorado') || n.includes('gold')) return '#caa15a';
+  if (n.includes('cobre') || n.includes('copper')) return '#b56a3a';
+  if (n.includes('caoba') || n.includes('mahogany')) return '#8a4738';
+  if (n.includes('rojo') || n.includes('red')) return '#a83a32';
+  if (n.includes('violeta') || n.includes('violet')) return '#7a5a86';
   if ((gama || '').includes('RUBIOS')) return '#d8c096';
   if ((gama || '').includes('INTENSE')) return '#6f5638';
   return '#9b8a72';

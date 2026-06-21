@@ -9,6 +9,7 @@ const ACCENTS = ['violeta', 'rosa', 'esmeralda', 'azul'];
 const MODULES = [
   ['color', 'Barra de Color'],
   ['unas', 'Barra de Uñas'],
+  ['servicios', 'Servicios'],
   ['venta', 'Venta sin cita'],
   ['agenda', 'Agenda'],
   ['clientes', 'Clientes'],
@@ -18,12 +19,28 @@ const MODULES = [
 ];
 
 export default function TeamManager() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, adminPin, setAdminPin } = useAuth();
   const [team, setTeam] = useState([]);
   const [toast, setToast] = useToast();
   const [editing, setEditing] = useState(null); // null o el miembro a editar
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [askPin, setAskPin] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pendingAction, setPendingAction] = useState(null);
+
+  // Asegura tener el PIN de admin en memoria; si no, lo pide y guarda la acción pendiente.
+  function withAdminPin(action) {
+    if (adminPin) { action(adminPin); return; }
+    setPendingAction(() => action); setPinInput(''); setAskPin(true);
+  }
+  function confirmAskPin() {
+    if (pinInput.length < 4) return setToast('PIN de 4+ dígitos');
+    setAdminPin(pinInput);
+    setAskPin(false);
+    if (pendingAction) pendingAction(pinInput);
+    setPendingAction(null);
+  }
 
   // campos del formulario
   const [name, setName] = useState('');
@@ -57,34 +74,41 @@ export default function TeamManager() {
   async function save() {
     if (busy) return;
     if (!name.trim()) return setToast('Escribe el nombre');
-    if (pinEnabled && pin && pin.length < 4 && pin.length > 0) return setToast('El PIN debe tener al menos 4 dígitos');
-    setBusy(true);
-    try {
-      if (creating) {
-        const { error } = await supabase.rpc('admin_create_artist', {
-          p_full_name: name.trim(), p_role: role, p_accent: accent,
-          p_pin: pinEnabled ? pin : null, p_pin_enabled: pinEnabled,
-        });
-        if (error) throw error;
-        setToast('✓ Miembro creado');
-      } else {
-        const { error } = await supabase.rpc('admin_update_artist', {
-          p_id: editing.id, p_full_name: name.trim(), p_role: role, p_accent: accent,
-          p_pin_enabled: pinEnabled,
-          p_pin: pin ? pin : null,                 // si se deja vacío, conserva el PIN actual
-          p_hidden_modules: hidden,
-        });
-        if (error) throw error;
-        setToast('✓ Cambios guardados');
-      }
-      setCreating(false); setEditing(null); load();
-    } catch (e) { setToast('⚠ ' + e.message); } finally { setBusy(false); }
+    if (pinEnabled && pin && pin.length > 0 && pin.length < 4) return setToast('El PIN debe tener al menos 4 dígitos');
+    withAdminPin(async (apin) => {
+      setBusy(true);
+      try {
+        if (creating) {
+          const { error } = await supabase.rpc('admin_create_artist', {
+            p_admin_pin: apin, p_full_name: name.trim(), p_role: role, p_accent: accent,
+            p_pin: pinEnabled ? pin : null, p_pin_enabled: pinEnabled,
+          });
+          if (error) throw error;
+          setToast('✓ Miembro creado');
+        } else {
+          const { error } = await supabase.rpc('admin_update_artist', {
+            p_admin_pin: apin, p_id: editing.id, p_full_name: name.trim(), p_role: role, p_accent: accent,
+            p_pin_enabled: pinEnabled,
+            p_pin: pin ? pin : null,
+            p_hidden_modules: hidden,
+          });
+          if (error) throw error;
+          setToast('✓ Cambios guardados');
+        }
+        setCreating(false); setEditing(null); load();
+      } catch (e) {
+        if (String(e.message).includes('PIN')) { setAdminPin(null); setToast('⚠ PIN de administrador incorrecto'); }
+        else setToast('⚠ ' + e.message);
+      } finally { setBusy(false); }
+    });
   }
 
   async function toggleActive(m) {
-    const { error } = await supabase.rpc('admin_update_artist', { p_id: m.id, p_active: !m.active });
-    if (error) return setToast('⚠ ' + error.message);
-    setToast(m.active ? 'Miembro desactivado' : 'Miembro activado'); load();
+    withAdminPin(async (apin) => {
+      const { error } = await supabase.rpc('admin_update_artist', { p_admin_pin: apin, p_id: m.id, p_active: !m.active });
+      if (error) { if (String(error.message).includes('PIN')) setAdminPin(null); return setToast('⚠ ' + error.message); }
+      setToast(m.active ? 'Miembro desactivado' : 'Miembro activado'); load();
+    });
   }
 
   if (!isAdmin) return <Shell title="Equipo"><div className="screen"><p style={{ color: 'var(--muted)' }}>Solo el administrador puede gestionar el equipo.</p></div></Shell>;
@@ -170,6 +194,15 @@ export default function TeamManager() {
           {busy ? 'Guardando…' : creating ? 'Crear miembro' : 'Guardar cambios'}
         </button>
         <button className="btn ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => { setCreating(false); setEditing(null); }}>Cancelar</button>
+      </Modal>
+      <Modal open={askPin} onClose={() => setAskPin(false)}>
+        <h3 style={{ textAlign: 'center', marginBottom: 4 }}>👑 Confirmar administrador</h3>
+        <p style={{ color: 'var(--muted)', fontSize: '.86rem', textAlign: 'center', marginBottom: 16 }}>Ingresa el PIN de administrador para esta acción</p>
+        <input className="pin-input" inputMode="numeric" maxLength={8} value={pinInput} autoFocus
+          onChange={e => setPinInput(e.target.value.replace(/\D/g, ''))}
+          onKeyDown={e => { if (e.key === 'Enter') confirmAskPin(); }} placeholder="••••" />
+        <button className="btn primary" style={{ width: '100%', marginTop: 14 }} onClick={confirmAskPin} disabled={pinInput.length < 4}>Confirmar</button>
+        <button className="btn ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => setAskPin(false)}>Cancelar</button>
       </Modal>
       <Toast msg={toast} />
     </Shell>

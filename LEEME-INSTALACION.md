@@ -1,28 +1,31 @@
 # ByLolo Studio
 
-## NUEVO: Gestión de equipo (panel de Admin)
-Entra como Admin → estación "Equipo". Desde ahí el Admin puede:
-- CREAR miembros nuevos escribiendo solo su nombre (sin correo ni contraseña).
-- Elegir su ROL (Artista o Admin) y su color de acento.
-- Activar o desactivar PIN por persona (tú decides quién pide PIN al ficharse).
-- Cambiar el PIN de cada quien.
-- OCULTAR módulos por artista (ej. ocultar "Barra de Color" a la artista de uñas).
-- Activar/desactivar miembros (los inactivos no aparecen en el panel de selección).
+## NUEVO: flujo por etapas + temporizador flotante en Barra de Color
 
-Solo el Admin puede crear, activar/desactivar o cambiar PINs.
+### Temporizador flotante y persistente
+- Cuando inicias un temporizador de pose y SALES a otro módulo (o incluso si se
+  recarga la página por accidente), aparece una BURBUJA FLOTANTE abajo a la derecha
+  con el tiempo restante.
+- Toca la burbuja para VOLVER exactamente al servicio donde ibas.
+- Al terminar el tiempo suena, vibra y la burbuja ofrece: "＋5 min" o "Volver al servicio".
 
-## Recordatorio de acceso
-- El dispositivo (tablet) inicia sesión UNA vez con la cuenta del salón (que debe ser ADMIN, p.ej. alberto@bylololabs.com).
-- Después entra directo al panel de selección de artista.
-- Cada artista solo ve SUS ventas en Finanzas. El Admin ve todo y por artista.
+### Flujo por etapas (decoloración → tinte → ...)
+- En la Barra de Color, al terminar el tiempo de una etapa (p. ej. decoloración),
+  aparecen 3 opciones: "＋5 min más", "➕ Siguiente etapa" (otra fórmula/color), o
+  "Ir al resumen" (cobrar).
+- Cada etapa tiene su propia fórmula, pesado y temporizador. Todo se junta en un
+  solo cobro al final.
 
-## Seguridad
-- Los PINs están protegidos en la base de datos (no se pueden leer desde la app).
-- Las "llaves" del salón son: la contraseña de la cuenta del dispositivo y los PINs. Cuídalas.
+### Servicio en curso que se recupera
+- Si sales por error, la Barra de Color RESTAURA el servicio donde lo dejaste.
+- Para empezar de cero, usa el botón ✕ (arriba a la derecha) para descartar el
+  servicio en curso.
 
 ## Probar
 1. Borra la carpeta vieja antes de descomprimir esta.
 2. cmd dentro de la carpeta:  npm install  →  npm run dev
 3. http://localhost:5173/  →  Ctrl+Shift+R
+4. Barra de Color → arma una fórmula → báscula → Temporizador → Iniciar →
+   sal al menú (verás la burbuja) → toca la burbuja para volver.
 
-> Tu app en línea: https://bylolo-app.vercel.app
+> Báscula SKALE 2: solo Chrome de Android/PC.

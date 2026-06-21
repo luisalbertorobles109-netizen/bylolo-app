@@ -1,11 +1,13 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+import { FloatingTimer } from './context/TimerContext';
 import Login from './pages/Login';
 import SelectArtist from './pages/SelectArtist';
 import Dashboard from './pages/Dashboard';
 import Agenda from './pages/Agenda';
 import ColorBar from './pages/ColorBar';
 import NailBar from './pages/NailBar';
+import Services from './pages/Services';
 import Clients from './pages/Clients';
 import Inventory from './pages/Inventory';
 import Settings from './pages/Settings';
@@ -49,7 +51,8 @@ export function Shell({ title, sub, children, badge }) {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/seleccionar" element={<SelectGate />} />
       <Route path="/tarjeta/:token" element={<PublicCard />} />
@@ -57,6 +60,7 @@ export default function App() {
       <Route path="/agenda" element={<Protected><Agenda /></Protected>} />
       <Route path="/color" element={<Protected><ColorBar /></Protected>} />
       <Route path="/unas" element={<Protected><NailBar /></Protected>} />
+      <Route path="/servicios" element={<Protected><Services /></Protected>} />
       <Route path="/clientes" element={<Protected><Clients /></Protected>} />
       <Route path="/inventario" element={<Protected><Inventory /></Protected>} />
       <Route path="/finanzas" element={<Protected><Finance /></Protected>} />
@@ -66,7 +70,16 @@ export default function App() {
       <Route path="/equipo" element={<Protected><TeamManager /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+      <GlobalTimerBubble />
+    </>
   );
+}
+
+// Muestra la burbuja flotante solo si hay sesión y artista activo
+function GlobalTimerBubble() {
+  const { session, activeArtist } = useAuth();
+  if (!session || !activeArtist) return null;
+  return <FloatingTimer />;
 }
 
 // Compuerta para el panel de selección: requiere sesión, pero NO artista activo.

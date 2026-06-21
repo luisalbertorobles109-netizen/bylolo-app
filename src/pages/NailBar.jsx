@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Shell } from '../App';
 import { Toast, useToast } from '../components/UI';
+import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts } from '../components/Checkout';
 
 const BRANDS = ['Organic', 'Otro'];
 const CARD_FEE = 0.036;
@@ -19,7 +20,7 @@ export default function NailBar() {
   const [size, setSize] = useState(4);
   const [design, setDesign] = useState('Sencillo');
   const [price, setPrice] = useState('');
-  const [pay, setPay] = useState('efectivo');
+  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod } = useSaleExtras();
   const [screen, setScreen] = useState(1);
   const [toast, setToast] = useToast();
   const [busy, setBusy] = useState(false);
@@ -37,7 +38,8 @@ export default function NailBar() {
   }, []);
 
   const filtered = clients.filter(c => (c.full_name || '').toLowerCase().includes(q.toLowerCase()));
-  const fee = pay === 'tarjeta' ? Math.round(Number(price || 0) * CARD_FEE) : 0;
+  const serviceSubtotal = Number(price || 0);
+  const b = computeBreakdown({ serviceSubtotal, products, discountPct, payMethod, suppliesCost: 0 });
 
   async function charge() {
     if (!price || busy) return setToast('Pon el precio del servicio');
@@ -46,16 +48,21 @@ export default function NailBar() {
       const { data: sale, error } = await supabase.from('sales').insert({
         user_id: activeArtist.id, client_id: client?.id || null,
         service_name: `Uñas ${design} · ${brand} · tamaño ${size}`,
-        service_price: Number(price), subtotal: Number(price), total: Number(price),
-        payment_method: pay, financial_cost: fee, notes: 'Barra de Uñas',
+        service_price: serviceSubtotal, subtotal: b.beforeDiscount, total: b.total,
+        payment_method: payMethod,
+        financial_cost: Math.round(b.realCost),
+        products_cost: Math.round(b.productsCost), supplies_cost: 0, card_cost: Math.round(b.cardCost),
+        discount_pct: discountPct, gift_value: Math.round(b.giftValue),
+        notes: 'Barra de Uñas',
       }).select().single();
       if (error) throw error;
       await supabase.from('nail_jobs').insert({
         client_id: client?.id || null, artist_id: activeArtist.id, sale_id: sale.id,
-        brand, nail_size: size, design_type: design, price: Number(price),
+        brand, nail_size: size, design_type: design, price: serviceSubtotal,
       });
+      await persistSaleProducts(sale.id, products, activeArtist.id);
       if (client) await supabase.rpc('add_loyalty_stamp', { p_client_id: client.id, p_delta: 1, p_note: 'Servicio de uñas' });
-      setToast(`💅 Cobrado $${Number(price).toLocaleString()}`);
+      setToast(`💅 Cobrado $${b.total.toLocaleString()}`);
       setTimeout(() => nav('/'), 1500);
     } catch (e) { setToast('⚠ ' + e.message); } finally { setBusy(false); }
   }
@@ -106,24 +113,21 @@ export default function NailBar() {
           </div>
 
           <div className="card">
-            <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Cobro</h3>
+            <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Precio del servicio</h3>
             <div className="field"><label>Precio al cliente</label>
               <input type="number" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} placeholder="$" />
             </div>
-            <div className="field"><label>Método de pago</label>
-              <div className="row">
-                {['efectivo', 'tarjeta', 'transferencia'].map(m => (
-                  <button key={m} className={'btn' + (pay === m ? ' primary' : '')} style={{ textTransform: 'capitalize' }} onClick={() => setPay(m)}>{m}</button>
-                ))}
-              </div>
-            </div>
-            {pay === 'tarjeta' && price > 0 && (
-              <div className="info-cost">ℹ Costo financiero estimado (tarjeta {(CARD_FEE * 100).toFixed(1)}%): <b>−${fee}</b> · informativo, no se cobra al cliente</div>
-            )}
           </div>
 
+          <ProductPicker products={products} setProducts={setProducts} />
+
+          <CheckoutSummary
+            serviceSubtotal={serviceSubtotal} products={products}
+            discountPct={discountPct} setDiscountPct={setDiscountPct}
+            payMethod={payMethod} setPayMethod={setPayMethod} suppliesCost={0} />
+
           <button className="btn xl primary" style={{ width: '100%' }} onClick={charge} disabled={busy}>
-            {busy ? 'Cobrando…' : `💅 Cobrar $${Number(price || 0).toLocaleString()}`}
+            {busy ? 'Cobrando…' : `💅 Cobrar $${b.total.toLocaleString()}`}
           </button>
         </div>
       )}

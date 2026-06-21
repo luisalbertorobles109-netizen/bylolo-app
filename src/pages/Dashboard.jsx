@@ -30,71 +30,77 @@ export default function Dashboard() {
       <div className="screen" style={{ paddingBottom: 40 }}>
         <h2>Estaciones</h2>
         <p className="lead">Elige tu estación de trabajo.</p>
-        <div className="station-grid">
-          {show('color', 'Barra de Color') && (
-            <button className="station color" onClick={() => nav('/color')}>
-              <span className="sicon">🎨</span><span className="sname">Barra de Color</span>
-              <span className="ssub">Formular · pesar · cobrar</span>
+        <div className="dash-layout">
+          <div className="station-grid main">
+            {show('color', 'Barra de Color') && (
+              <button className="station color" onClick={() => nav('/color')}>
+                <span className="sicon">🎨</span><span className="sname">Barra de Color</span>
+                <span className="ssub">Formular · pesar · cobrar</span>
+              </button>
+            )}
+            {show('unas', 'Uñas') && (
+              <button className="station unas" onClick={() => nav('/unas')}>
+                <span className="sicon">💅</span><span className="sname">Barra de Uñas</span>
+                <span className="ssub">Diseño y cobro</span>
+              </button>
+            )}
+            {show('servicios', 'Servicios') && (
+              <button className="station servicios" onClick={() => nav('/servicios')}>
+                <span className="sicon">✂️</span><span className="sname">Servicios</span>
+                <span className="ssub">Corte, tratamiento y más</span>
+              </button>
+            )}
+            {show('venta', 'Venta sin cita') && (
+              <button className="station venta" onClick={() => nav('/venta')}>
+                <span className="sicon">🛍️</span><span className="sname">Venta sin cita</span>
+                <span className="ssub">Productos de mostrador</span>
+              </button>
+            )}
+            {show('agenda') && (
+              <button className="station agenda" onClick={() => nav('/agenda')}>
+                <span className="sicon">📅</span><span className="sname">Agenda</span>
+                <span className="ssub">Registrar citas</span>
+              </button>
+            )}
+            {show('pestanas', 'Pestañas') && (
+              <div className="station soon">
+                <span className="sicon">👁️</span><span className="sname">Pestañas</span>
+                <span className="ssub">Próximamente</span>
+              </div>
+            )}
+          </div>
+
+          <div className="compact-col">
+            <div className="compact-title">Gestión</div>
+            {show('clientes') && (
+              <button className="compact-item" onClick={() => nav('/clientes')}>
+                <span className="ci-icon">👥</span><span className="ci-name">Clientes</span>
+              </button>
+            )}
+            {show('inventario') && (
+              <button className="compact-item" onClick={() => nav('/inventario')}>
+                <span className="ci-icon">📦</span><span className="ci-name">Inventario</span>
+              </button>
+            )}
+            {show('lealtad', 'Lealtad') && (
+              <button className="compact-item" onClick={() => nav('/lealtad')}>
+                <span className="ci-icon">⭐</span><span className="ci-name">Lealtad</span>
+              </button>
+            )}
+            {show('finanzas', 'Finanzas') && (
+              <button className="compact-item" onClick={() => nav('/finanzas')}>
+                <span className="ci-icon">📊</span><span className="ci-name">Finanzas</span>
+              </button>
+            )}
+            <button className="compact-item" onClick={() => nav('/ajustes')}>
+              <span className="ci-icon">⚙️</span><span className="ci-name">Ajustes</span>
             </button>
-          )}
-          {show('unas', 'Uñas') && (
-            <button className="station unas" onClick={() => nav('/unas')}>
-              <span className="sicon">💅</span><span className="sname">Barra de Uñas</span>
-              <span className="ssub">Diseño y cobro</span>
-            </button>
-          )}
-          {show('clientes') && (
-            <button className="station clientes" onClick={() => nav('/clientes')}>
-              <span className="sicon">👥</span><span className="sname">Clientes</span>
-              <span className="ssub">Historial y fichas</span>
-            </button>
-          )}
-          {show('agenda') && (
-            <button className="station agenda" onClick={() => nav('/agenda')}>
-              <span className="sicon">📅</span><span className="sname">Agenda</span>
-              <span className="ssub">Registrar citas</span>
-            </button>
-          )}
-          {show('lealtad', 'Lealtad') && (
-            <button className="station lealtad" onClick={() => nav('/lealtad')}>
-              <span className="sicon">⭐</span><span className="sname">Lealtad</span>
-              <span className="ssub">Tarjetas y estrellas</span>
-            </button>
-          )}
-          {show('venta', 'Venta sin cita') && (
-            <button className="station venta" onClick={() => nav('/venta')}>
-              <span className="sicon">🛍️</span><span className="sname">Venta sin cita</span>
-              <span className="ssub">Productos de mostrador</span>
-            </button>
-          )}
-          {show('inventario') && (
-            <button className="station inventario" onClick={() => nav('/inventario')}>
-              <span className="sicon">📦</span><span className="sname">Inventario</span>
-              <span className="ssub">Productos, insumos y abasto</span>
-            </button>
-          )}
-          {show('finanzas', 'Finanzas') && (
-            <button className="station finanzas" onClick={() => nav('/finanzas')}>
-              <span className="sicon">📊</span><span className="sname">Finanzas</span>
-              <span className="ssub">{isAdmin ? 'Salón y por artista' : 'Mis ingresos'}</span>
-            </button>
-          )}
-          <button className="station config" onClick={() => nav('/ajustes')}>
-            <span className="sicon">⚙️</span><span className="sname">Ajustes</span>
-            <span className="ssub">{isAdmin ? 'Tema y administración' : 'Tema y perfil'}</span>
-          </button>
-          {isAdmin && (
-            <button className="station equipo" onClick={() => nav('/equipo')}>
-              <span className="sicon">👥</span><span className="sname">Equipo</span>
-              <span className="ssub">Gestionar artistas</span>
-            </button>
-          )}
-          {show('pestanas', 'Pestañas') && (
-            <div className="station soon">
-              <span className="sicon">👁️</span><span className="sname">Pestañas</span>
-              <span className="ssub">Próximamente</span>
-            </div>
-          )}
+            {isAdmin && (
+              <button className="compact-item" onClick={() => nav('/equipo')}>
+                <span className="ci-icon">🧑‍🤝‍🧑</span><span className="ci-name">Equipo</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 26 }}>

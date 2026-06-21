@@ -61,10 +61,11 @@ export default function Finance() {
   const ingresos = viewSales.reduce((a, s) => a + Number(s.total || 0), 0);
   const cardSales = viewSales.filter(s => (s.payment_method || '').toLowerCase().includes('tarjeta'));
   const cardIncome = cardSales.reduce((a, s) => a + Number(s.total || 0), 0);
-  const costoFinanciero = cardIncome * CARD_FEE;
-  const costoInsumos = viewSales.reduce((a, s) => a + Number(s.financial_cost || 0), 0);
+  const costoInsumos = viewSales.reduce((a, s) => a + Number(s.supplies_cost || 0), 0);
+  const costoProductos = viewSales.reduce((a, s) => a + Number(s.products_cost || 0), 0);
+  const costoFinanciero = viewSales.reduce((a, s) => a + Number(s.card_cost || 0), 0);
   const gastosOp = viewExpenses.reduce((a, e) => a + Number(e.amount || 0), 0);
-  const utilidad = ingresos - costoFinanciero - gastosOp; // costoInsumos ya viene dentro de financial_cost
+  const utilidad = ingresos - costoInsumos - costoProductos - costoFinanciero - gastosOp;
 
   // Desglose por artista (solo Admin, vista salón)
   const byArtist = {};
@@ -132,10 +133,11 @@ export default function Finance() {
               <h3 style={{ fontSize: '1rem', marginBottom: 10 }}>Desglose</h3>
               <div className="total-line"><span>Ingresos totales</span><span className="num">{fmt(ingresos)}</span></div>
               <div className="total-line"><span>− Costo de insumos consumidos</span><span className="num" style={{ color: 'var(--peroxide)' }}>−{fmt(costoInsumos)}</span></div>
-              <div className="total-line"><span>− Costo financiero tarjeta ({(CARD_FEE * 100).toFixed(1)}%)</span><span className="num" style={{ color: 'var(--peroxide)' }}>−{fmt(costoFinanciero)}</span></div>
+              <div className="total-line"><span>− Costo de productos</span><span className="num" style={{ color: 'var(--peroxide)' }}>−{fmt(costoProductos)}</span></div>
+              <div className="total-line"><span>− Costo financiero tarjeta</span><span className="num" style={{ color: 'var(--peroxide)' }}>−{fmt(costoFinanciero)}</span></div>
               <div className="total-line"><span>− Gastos operativos</span><span className="num" style={{ color: 'var(--peroxide)' }}>−{fmt(gastosOp)}</span></div>
               <div className="total-line big"><span>Utilidad</span><span className="num" style={{ color: utilidad >= 0 ? 'var(--ok)' : 'var(--danger)' }}>{fmt(utilidad)}</span></div>
-              <p style={{ color: 'var(--muted)', fontSize: '.74rem', marginTop: 8 }}>El costo de insumos ya está incluido en el costo financiero registrado de cada venta; se muestra desglosado de forma informativa.</p>
+              <p style={{ color: 'var(--muted)', fontSize: '.74rem', marginTop: 8 }}>Cada venta guarda su desglose real de costos (insumos, productos y comisión de tarjeta) para calcular la utilidad.</p>
             </div>
 
             {isAdmin && scope === 'salon' && Object.keys(byArtist).length > 0 && (
