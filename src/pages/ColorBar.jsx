@@ -8,7 +8,11 @@ import { FALLBACK_RULES, suggestVol, toneColor, targetLevelOf, classifyTone, fun
 import { connectSkale } from '../lib/scale';
 import { useTimer } from '../context/TimerContext';
 
-const STEPS_BAR = ['1 Cliente', '2 Colores', '3 Fórmula', '4 Báscula', '⏱ Tiempo', '5 Resumen', '6 Cobro'];
+const STEPS_BAR = [
+  { n: 1, l: '1 Cliente' }, { n: 15, l: '2 Diseño' }, { n: 2, l: '3 Mezcla' },
+  { n: 3, l: '4 Fórmula' }, { n: 4, l: '5 Báscula' }, { n: 5, l: '⏱ Tiempo' },
+  { n: 6, l: '6 Resumen' }, { n: 7, l: '7 Cobro' },
+];
 const TOL = 1.0;
 const CARD_FEE = 0.036; // comisión informativa por cobro con tarjeta
 const LEVEL_NAMES = ['Negro', 'C.E.Osc', 'C.Osc', 'Cast.', 'C.Claro', 'R.Osc', 'Rubio', 'R.Claro', 'R.Clmo', 'R.E.Claro'];
@@ -36,6 +40,11 @@ export default function ColorBar() {
   const [screen, setScreen] = useState(1);
   const [client, setClient] = useState(null);
   const [appointmentId, setAppointmentId] = useState(null);
+  const [designName, setDesignName] = useState('');       // nombre del diseño
+  const [stepType, setStepType] = useState(null);         // 'decolor' | 'matiz' | null
+  const [decolorMix, setDecolorMix] = useState([]);       // [{product, grams}] polvo+peróx+aditivo
+  const [photoFile, setPhotoFile] = useState(null);       // foto del resultado
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [hist, setHist] = useState(null);
   const [brandView, setBrandView] = useState('KULL');
   const [gamaView, setGamaView] = useState('');
@@ -48,6 +57,8 @@ export default function ColorBar() {
   const [svcItems, setSvcItems] = useState([]);
   const [treatments, setTreatments] = useState([]);   // [{product, grams, price}]
   const [treatmentCat, setTreatmentCat] = useState([]); // insumos de tratamiento
+  const [bleachProducts, setBleachProducts] = useState([]); // polvos decolorantes
+  const [additiveCat, setAdditiveCat] = useState([]); // aditivos (Olaplex, Bond, etc.)
   const [showTreat, setShowTreat] = useState(false);
   const [services, setServices] = useState([]);
   const [prods, setProds] = useState([]);
@@ -62,7 +73,7 @@ export default function ColorBar() {
     (async () => {
       const start = new Date(); start.setHours(0, 0, 0, 0);
       const end = new Date(); end.setHours(23, 59, 59, 999);
-      const [c, a, p, b, s, sc, px, tr] = await Promise.all([
+      const [c, a, p, b, s, sc, px, tr, ad] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }).limit(300),
         supabase.from('appointments').select('id, datetime, client_id, client_name, reason, clients(id, full_name)').gte('datetime', start.toISOString()).lte('datetime', end.toISOString()).order('datetime'),
         supabase.from('products').select('*').in('class', ['Tinte', 'Decolorante']).eq('status', 'Activo').order('gama').order('name'),
@@ -71,6 +82,7 @@ export default function ColorBar() {
         supabase.from('service_catalog').select('*').eq('active', true),
         supabase.from('products').select('*').eq('class', 'Peroxido').eq('status', 'Activo'),
         supabase.from('products').select('*').eq('class', 'Tratamiento').eq('status', 'Activo').order('name'),
+        supabase.from('products').select('*').eq('class', 'Aditivo').eq('status', 'Activo').order('name'),
       ]);
       setClients(c.data || []);
       setAppts(a.data || []);
@@ -94,6 +106,9 @@ export default function ColorBar() {
       setServicesCat(sc.data || []);
       setPeroxProducts(px.data || []);
       setTreatmentCat(tr.data || []);
+      setAdditiveCat(ad.data || []);
+      // Separar decolorantes del agrupado de tonos
+      setBleachProducts((p.data || []).filter(x => (x.class || '').toLowerCase() === 'decolorante'));
       // preselección desde el dashboard
       const st = location.state;
       if (st?.clientId) {
@@ -189,6 +204,7 @@ export default function ColorBar() {
       const snap = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
       if (snap && snap.client) {
         setClient(snap.client); setAppointmentId(snap.appointmentId || null);
+        setDesignName(snap.designName || ''); setStepType(snap.stepType || null); setDecolorMix(snap.decolorMix || []);
         setBrandView(snap.brandView || 'KULL'); setGamaView(snap.gamaView || '');
         setMix(snap.mix || []); setBaseLevel(snap.baseLevel ?? 5); setMode(snap.mode || 'sugerida');
         setPeroxRows(snap.peroxRows || []); setExtra(snap.extra || '');
@@ -206,9 +222,9 @@ export default function ColorBar() {
   // ---- Guardar sesión cuando cambian los datos del trabajo ----
   useEffect(() => {
     if (!readyRef.current || !client) return;
-    const snap = { screen, client, appointmentId, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
+    const snap = { screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) {}
-  }, [screen, client, appointmentId, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod]);
+  }, [screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extra, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod]);
   const simRef = useRef(0);
   const pourRef = useRef(false);
   const rafRef = useRef(null);
@@ -307,7 +323,8 @@ export default function ColorBar() {
   // ---------- pasos / guardar ----------
   function currentStepObj() {
     return {
-      brand: primaryBrand,
+      step_type: stepType || 'matiz',
+      brand: stepType === 'decolor' ? 'DECOLORACIÓN' : primaryBrand,
       is_custom: mode === 'custom' || weighComps.length > builtComps.length,
       base_level: baseLevel,
       pose_minutes: Math.round(timerSecs / 60) || null,
@@ -318,16 +335,19 @@ export default function ColorBar() {
     setDoneSteps(s => [...s, currentStepObj()]);
     setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
     setWeighComps([]); setWeights([]); setCompIdx(0);
+    setDecolorMix([]); setStepType(null);
     tmr.reset();
-    setToast(`Etapa ${doneSteps.length + 2}: elige los colores de la siguiente aplicación`);
-    setScreen(2);
+    setToast(`Etapa ${doneSteps.length + 2}: elige el siguiente paso`);
+    setScreen(15); // vuelve a elegir tipo de paso
   }
   function discardSession() {
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
     tmr.clear();
-    setClient(null); setAppointmentId(null); setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
+    setClient(null); setAppointmentId(null); setDesignName(''); setStepType(null); setDecolorMix([]);
+    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtra('');
     setDoneSteps([]); setSvcItems([]); setTreatments([]); setServices([]); setProds([]);
     setWeighComps([]); setWeights([]); setCompIdx(0); setSavedJobId(null); setDiscountPct(0); setPayMethod('efectivo');
+    setPhotoFile(null); setPhotoPreview(null);
     setScreen(1);
     setToast('Servicio descartado');
   }
@@ -339,6 +359,7 @@ export default function ColorBar() {
       const { data: job, error: e1 } = await supabase.from('color_jobs').insert({
         client_id: client.id, artist_id: activeArtist.id, appointment_id: appointmentId,
         base_level: baseLevel, status: 'done', finished_at: new Date().toISOString(),
+        design_name: designName || null,
       }).select().single();
       if (e1) throw e1;
       for (let i = 0; i < allSteps.length; i++) {
@@ -447,6 +468,16 @@ export default function ColorBar() {
         });
       }
       setToast(`💵 Cobrado $${totalCobrar.toLocaleString()} · visita cerrada`);
+      // Subir foto del resultado si se adjuntó
+      if (photoFile && savedJobId) {
+        try {
+          const ext = photoFile.name?.split('.').pop() || 'jpg';
+          const path = `${activeArtist.id}/${savedJobId}.${ext}`;
+          await supabase.storage.from('service-photos').upload(path, photoFile, { upsert: true });
+          const { data: urlData } = supabase.storage.from('service-photos').getPublicUrl(path);
+          if (urlData?.publicUrl) await supabase.from('color_jobs').update({ photo_url: urlData.publicUrl }).eq('id', savedJobId);
+        } catch (pe) { console.warn('Error subiendo foto:', pe); }
+      }
       try { localStorage.removeItem('bylolo_color_session'); } catch (e) {}
       tmr.clear();
       setTimeout(() => nav('/'), 1600);
@@ -461,7 +492,17 @@ export default function ColorBar() {
   }
   function navNext() {
     if (screen === 1 && !client) return setToast('Elige un cliente o cita primero');
-    if (screen === 2 && !mix.length) return setToast('Toca al menos un tono');
+    if (screen === 1) return go(15); // va al diseño
+    if (screen === 15 && !stepType) return setToast('Elige Decoloración o Matiz/Tinte');
+    if (screen === 15) return go(2); // va a la mezcla
+    if (screen === 2 && stepType === 'decolor' && !decolorMix.length) return setToast('Agrega al menos el polvo decolorante');
+    if (screen === 2 && stepType !== 'decolor' && !mix.length) return setToast('Toca al menos un tono');
+    if (screen === 2 && stepType === 'decolor') {
+      // Construir weighComps desde decolorMix y saltar al pesado
+      setWeighComps(decolorMix.map(d => ({ name: d.product.name, product_id: d.product.id, g: Number(d.target || 30), brand: d.product.brand || '' })));
+      setWeights(decolorMix.map(() => 0)); setCompIdx(0);
+      return go(4); // salta la fórmula, va a báscula
+    }
     if (screen === 4 && compIdx < weighComps.length) return setToast('Aún falta pesar componentes');
     go(screen + 1);
   }
@@ -485,16 +526,19 @@ export default function ColorBar() {
     <Shell title="Barra de Color"
       sub={client ? `Cliente: ${client.full_name || 'Sin nombre'}` : 'Sin cliente seleccionado'}
       badge={<>
-        {screen >= 2 && screen <= 5 && <span className="stepbadge">Paso {stepNum}</span>}
+        {(screen >= 2 && screen <= 5 || screen === 15) && <span className="stepbadge">Etapa {stepNum}</span>}
         {(timerOn || timerAlert) && (
           <button className={'chip-timer num' + (timerAlert ? ' alert' : '')} onClick={() => go(5)}>⏱ {fmtT(timerLeft)}</button>
         )}
         {client && <button className="iconbtn" title="Descartar servicio en curso" onClick={discardSession}>✕</button>}
       </>}>
       <div className="steps">
-        {STEPS_BAR.map((s, i) => (
-          <div key={s} className={'step' + (i + 1 === screen ? ' active' : '') + (i + 1 < screen ? ' done' : '')}>{s}</div>
-        ))}
+        {STEPS_BAR.map((s) => {
+          const screenOrder = [1, 15, 2, 3, 4, 5, 6, 7];
+          const myIdx = screenOrder.indexOf(s.n);
+          const curIdx = screenOrder.indexOf(screen);
+          return <div key={s.n} className={'step' + (s.n === screen ? ' active' : '') + (myIdx < curIdx ? ' done' : '')} onClick={() => myIdx < curIdx && go(s.n)}>{s.l}</div>;
+        })}
       </div>
 
       {/* ============ 1. CLIENTE / AGENDA ============ */}
@@ -535,8 +579,109 @@ export default function ColorBar() {
         </section>
       )}
 
-      {/* ============ 2. COLORES ============ */}
-      {screen === 2 && (
+      {/* ============ 15. DISEÑO ============ */}
+      {screen === 15 && (
+        <section className="screen">
+          <h2>{doneSteps.length ? `Etapa ${doneSteps.length + 1}: ¿Qué sigue?` : '¿Qué vamos a hacer?'}</h2>
+          <p className="lead">Nombra el diseño y elige cómo empezar.</p>
+          <div className="card">
+            <div className="field"><label>Nombre del diseño (opcional)</label>
+              <input value={designName} onChange={e => setDesignName(e.target.value)} placeholder="Ej. Balayage rubio ceniza, Mechas cobre…" />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <button className="station color" style={{ minHeight: 120 }} onClick={() => { setStepType('decolor'); go(2); }}>
+              <span className="sicon">💡</span>
+              <span className="sname">Decoloración</span>
+              <span className="ssub">Polvo + peróxido + aditivo</span>
+            </button>
+            <button className="station color" style={{ minHeight: 120, background: 'radial-gradient(120% 140% at 85% 10%,#a855f7 0%,#7e22ce 55%,#3b0764 100%)' }} onClick={() => { setStepType('matiz'); go(2); }}>
+              <span className="sicon">🎨</span>
+              <span className="sname">Matiz / Tinte</span>
+              <span className="ssub">Elegir tonos y formular</span>
+            </button>
+          </div>
+          {doneSteps.length > 0 && (
+            <button className="btn xl ok" style={{ width: '100%', marginTop: 16 }} onClick={() => go(6)}>
+              Ir al resumen → (ya tengo {doneSteps.length} etapa{doneSteps.length > 1 ? 's' : ''})
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* ============ 2. COLORES / DECOLORACIÓN ============ */}
+      {screen === 2 && stepType === 'decolor' && (
+        <section className="screen">
+          <h2>Decoloración — Etapa {doneSteps.length + 1}</h2>
+          <p className="lead">Agrega polvo decolorante, peróxido y aditivo (opcional). Después pasas a la báscula.</p>
+
+          {/* Polvo decolorante */}
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Polvo decolorante</h3>
+            {bleachProducts.map(p => {
+              const sel = decolorMix.some(d => d.product.id === p.id);
+              return <button key={p.id} className={'pill' + (sel ? ' sel' : '')} style={{ width: '100%', textAlign: 'left', marginBottom: 4 }}
+                onClick={() => {
+                  if (sel) setDecolorMix(m => m.filter(d => d.product.id !== p.id));
+                  else setDecolorMix(m => [...m, { product: p, target: 30, role: 'polvo' }]);
+                }}>
+                {sel ? '✓ ' : '＋ '}{p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
+              </button>;
+            })}
+            {bleachProducts.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>No hay productos de clase "Decolorante" en inventario. Agrega uno con Clase = Decolorante.</p>}
+          </div>
+
+          {/* Peróxido */}
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Peróxido / Revelador</h3>
+            {peroxProducts.map(p => {
+              const sel = decolorMix.some(d => d.product.id === p.id);
+              return <button key={p.id} className={'pill' + (sel ? ' sel' : '')} style={{ width: '100%', textAlign: 'left', marginBottom: 4 }}
+                onClick={() => {
+                  if (sel) setDecolorMix(m => m.filter(d => d.product.id !== p.id));
+                  else setDecolorMix(m => [...m, { product: p, target: 60, role: 'peroxido' }]);
+                }}>
+                {sel ? '✓ ' : '＋ '}{p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
+              </button>;
+            })}
+          </div>
+
+          {/* Aditivos */}
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Aditivo (opcional)</h3>
+            <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 8px' }}>Olaplex, Bond, protector, etc.</p>
+            {additiveCat.map(p => {
+              const sel = decolorMix.some(d => d.product.id === p.id);
+              return <button key={p.id} className={'pill' + (sel ? ' sel' : '')} style={{ width: '100%', textAlign: 'left', marginBottom: 4 }}
+                onClick={() => {
+                  if (sel) setDecolorMix(m => m.filter(d => d.product.id !== p.id));
+                  else setDecolorMix(m => [...m, { product: p, target: 5, role: 'aditivo' }]);
+                }}>
+                {sel ? '✓ ' : '＋ '}{p.name} <span style={{ color: 'var(--muted)' }}>· {p.brand}</span>
+              </button>;
+            })}
+            {additiveCat.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '.82rem' }}>No hay aditivos en inventario. Agrega productos con Clase = Aditivo.</p>}
+          </div>
+
+          {/* Gramos objetivo por producto */}
+          {decolorMix.length > 0 && (
+            <div className="card">
+              <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Gramos objetivo</h3>
+              {decolorMix.map((d, i) => (
+                <div key={d.product.id} className="comp-row" style={{ marginBottom: 6 }}>
+                  <div className="cname">{d.product.name}</div>
+                  <input style={{ width: 70, textAlign: 'center', background: 'var(--surface2)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--text)', minHeight: 40 }}
+                    inputMode="decimal" value={d.target || ''} placeholder="g"
+                    onChange={e => setDecolorMix(m => m.map((x, j) => j === i ? { ...x, target: Number(e.target.value) || 0 } : x))} />
+                  <span style={{ color: 'var(--muted)', fontSize: '.8rem' }}>g</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {screen === 2 && stepType === 'matiz' && (
         <section className="screen">
           <h2>{doneSteps.length ? `Paso ${stepNum}: elige los colores` : 'Elige tus colores'}</h2>
           <p className="lead">Toca uno o varios tonos — puedes combinar gamas y marcas. Stock en vivo de tu inventario.</p>
@@ -786,11 +931,12 @@ export default function ColorBar() {
       {screen === 6 && (
         <section className="screen">
           <h2>Resumen del trabajo</h2>
-          <p className="lead">Revisa los pasos. Si el diseño necesita otra aplicación, agrega un paso más.</p>
+          {designName && <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--violet)', marginBottom: 8 }}>✨ Diseño: {designName}</div>}
+          <p className="lead">Revisa las etapas. Si el diseño necesita otra aplicación, agrega una etapa más.</p>
           {[...doneSteps, currentStepObj()].map((st, i) => (
             <div key={i} className="stepcard">
               <div className="sct">
-                Paso {i + 1} · {st.comps.filter(c => c.type === 'tinte' || c.type === 'decolorante').map(c => c.name.split(' ·')[0]).join(' + ')} ({st.brand === 'KULL' ? 'KÜÜL' : st.brand})
+                {st.step_type === 'decolor' ? `Etapa ${i + 1} · Decoloración` : `Etapa ${i + 1} · ${st.comps.filter(c => c.type === 'tinte' || c.type === 'decolorante').map(c => c.name.split(' ·')[0]).join(' + ')} (${st.brand === 'KULL' ? 'KÜÜL' : st.brand})`}
                 <span className={'tag ' + (st.is_custom ? 'warn' : 'ok')} style={{ marginLeft: 6 }}>{st.is_custom ? 'personalizada' : 'guía'}</span>
               </div>
               <div className="scd">
@@ -959,6 +1105,37 @@ export default function ColorBar() {
               </div>
             </div>
           </div>
+
+          {/* Foto del resultado */}
+          <div className="card">
+            <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>📸 Foto del resultado (opcional)</h3>
+            <p style={{ color: 'var(--muted)', fontSize: '.8rem', margin: '0 0 10px' }}>Toma o sube una foto para guardarla en el historial del cliente.</p>
+            {photoPreview && (
+              <div style={{ marginBottom: 10, textAlign: 'center' }}>
+                <img src={photoPreview} alt="Resultado" style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 14, border: '1px solid var(--line)' }} />
+                <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}>Quitar foto</button>
+              </div>
+            )}
+            {!photoPreview && (
+              <div className="row">
+                <label className="btn" style={{ cursor: 'pointer' }}>
+                  📷 Cámara
+                  <input type="file" accept="image/*" capture="environment" hidden onChange={e => {
+                    const f = e.target.files?.[0]; if (!f) return;
+                    setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f));
+                  }} />
+                </label>
+                <label className="btn" style={{ cursor: 'pointer' }}>
+                  🖼 Galería
+                  <input type="file" accept="image/*" hidden onChange={e => {
+                    const f = e.target.files?.[0]; if (!f) return;
+                    setPhotoFile(f); setPhotoPreview(URL.createObjectURL(f));
+                  }} />
+                </label>
+              </div>
+            )}
+          </div>
+
           <button className="btn xl ok" style={{ width: '100%' }} disabled={busy} onClick={chargeAll}>
             {busy ? 'Procesando…' : '💵 Cobrar y terminar visita'}
           </button>
@@ -980,9 +1157,13 @@ export default function ColorBar() {
       )}
 
       {/* nav inferior */}
-      {screen < 6 && (
+      {(screen < 6 || screen === 15) && (
         <div className="footer-nav">
-          <button className="btn" style={{ visibility: screen === 1 ? 'hidden' : 'visible' }} onClick={() => go(Math.max(1, screen - 1))}>← Atrás</button>
+          <button className="btn" style={{ visibility: screen === 1 ? 'hidden' : 'visible' }} onClick={() => {
+            if (screen === 15) go(1);
+            else if (screen === 2) go(15);
+            else go(Math.max(1, screen - 1));
+          }}>← Atrás</button>
           <button className="btn primary" onClick={navNext}>Continuar →</button>
         </div>
       )}

@@ -54,7 +54,7 @@ export async function exportInventoryXLSX(rows) {
     ['Nombre', 'Obligatorio. Ej: "7.3 Rubio Dorado" o "Shampoo Matizador".'],
     ['Tipo', 'Escribe "insumo" (se usa en servicios, es costo) o "producto" (se vende al cliente).'],
     ['Marca', 'Ej: KÜÜL, TEC ITALY, Olaplex, ByLolo…'],
-    ['Clase', 'Ej: Tinte, Peroxido, Tratamiento, Decolorante, Capilar…'],
+    ['Clase', 'Ej: Tinte, Peroxido, Decolorante, Aditivo, Tratamiento, Capilar…'],
     ['Gama', 'La línea/colección del fabricante. Ej: COLOR SYSTEM, DESIGN COLOR.'],
     ['Costo', 'Lo que te cuesta a ti (para el costo de insumos).'],
     ['Precio de Venta', 'Lo que cobras al cliente (solo para productos de venta).'],
