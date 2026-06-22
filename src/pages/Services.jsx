@@ -4,16 +4,17 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Shell } from '../App';
 import { Toast, useToast } from '../components/UI';
-import { connectSkale } from '../lib/scale';
+import { useScale } from '../context/ScaleContext';
 import { toneColor } from '../lib/colorRules';
 import DropGauge from '../components/DropGauge';
-import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts } from '../components/Checkout';
+import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts, persistBaseService } from '../components/Checkout';
 
 const CARD_FEE = 0.036;
 const SERVICE_TYPES = ['Corte de pelo', 'Tratamiento', 'Peinado', 'Otro servicio'];
 
 export default function Services() {
   const { activeArtist } = useAuth();
+  const scale = useScale();
   const nav = useNavigate();
   const location = useLocation();
   const [clients, setClients] = useState([]);
@@ -25,7 +26,7 @@ export default function Services() {
   const [colorBrand, setColorBrand] = useState('');
   const [customName, setCustomName] = useState('');
   const [price, setPrice] = useState('');
-  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode } = useSaleExtras();
+  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode, baseServiceMode, setBaseServiceMode } = useSaleExtras();
   const [screen, setScreen] = useState(1);
   const [supplies, setSupplies] = useState([]);
   const [used, setUsed] = useState([]);          // [{product, grams}]
@@ -37,13 +38,10 @@ export default function Services() {
   // ---- báscula ----
   const [weighIdx, setWeighIdx] = useState(null);
   const [curGrams, setCurGrams] = useState(0);
-  const [bleOn, setBleOn] = useState(false);
+  const bleOn = scale.connected;
   const [diag, setDiag] = useState(false);
   const [diagLog, setDiagLog] = useState('');
-  const bleRef = useRef(null);
   const simRef = useRef(0);
-  const offsetRef = useRef(0);
-  const lastRawRef = useRef(0);
   const pourRef = useRef(false);
   const rafRef = useRef(0);
 
@@ -60,7 +58,7 @@ export default function Services() {
         if (f) { setClient(f); setScreen(2); }
       }
     });
-    return () => { try { bleRef.current?.disconnect(); } catch (e) {} cancelAnimationFrame(rafRef.current); };
+    return () => { cancelAnimationFrame(rafRef.current); };
   }, []);
 
   // Al cambiar el tipo de servicio, reinicia submodos e insumos
@@ -120,23 +118,20 @@ export default function Services() {
   const suggestedProducts = products.reduce((a, p) => a + (p.gift ? 0 : Number(p.price || 0)), 0);
   const suggested = Math.round(suggestedFromSupplies + suggestedProducts);
   const serviceSubtotal = Number(price || 0);
-  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost: insumosCost });
+  const baseService = supplies.find(p => (p.name || '').trim().toLowerCase() === 'servicio');
+  const baseServiceCost = baseService ? Number(baseService.cost) : 0;
+  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost: insumosCost, baseServiceCost, baseServiceMode });
 
   // ---- báscula ----
   function tare(silent) {
-    offsetRef.current = lastRawRef.current; simRef.current = 0; setCurGrams(0);
-    if (bleRef.current) bleRef.current.tare();
+    simRef.current = 0; setCurGrams(0);
+    if (scale.connected) scale.tare();
     if (!silent) setToast('Tara ✓');
   }
   async function connectScale() {
     try {
-      const s = await connectSkale({
-        onWeight: (raw) => { lastRawRef.current = raw; setCurGrams(Math.max(0, raw - offsetRef.current)); },
-        onRaw: (hex) => setDiagLog(l => ('RX: ' + hex + '\n' + l).slice(0, 4000)),
-        onDisconnect: () => { bleRef.current = null; setBleOn(false); },
-      });
-      bleRef.current = s; setBleOn(true); setToast('Báscula conectada ✓');
-    } catch (err) { setToast('⚠ ' + err.message); setDiagLog(l => ('Error: ' + err.message + '\n' + l).slice(0, 4000)); }
+      await scale.connect(); setToast('Báscula conectada ✓');
+    } catch (err) { setToast('⚠ ' + err.message); }
   }
   function pourLoop() {
     if (!pourRef.current) return;
@@ -147,6 +142,12 @@ export default function Services() {
   const startPour = (e) => { e.preventDefault(); if (bleOn) return; pourRef.current = true; pourLoop(); };
   const stopPour = () => { pourRef.current = false; cancelAnimationFrame(rafRef.current); };
   function openWeigh(i) { setWeighIdx(i); setCurGrams(0); simRef.current = 0; tare(true); }
+  // Lectura en vivo de la báscula global mientras se pesa un insumo (por suscripción)
+  useEffect(() => {
+    if (weighIdx === null || !scale?.subscribe) return undefined;
+    setCurGrams(scale.getGrams ? scale.getGrams() : 0);
+    return scale.subscribe(setCurGrams);
+  }, [weighIdx, scale]);
   function saveWeight() {
     setUsed(x => x.map((y, j) => j === weighIdx ? { ...y, grams: Math.round(curGrams * 10) / 10 } : y));
     setToast('Peso guardado: ' + (Math.round(curGrams * 10) / 10) + ' g');
@@ -163,7 +164,7 @@ export default function Services() {
         service_name: serviceName, service_price: b.effectiveService,
         subtotal: b.beforeDiscount, total: b.total,
         payment_method: payMethod, financial_cost: Math.round(b.realCost),
-        products_cost: Math.round(b.productsCost), supplies_cost: Math.round(insumosCost), card_cost: Math.round(b.cardCost),
+        products_cost: Math.round(b.productsCost), supplies_cost: Math.round(insumosCost + b.effectiveBaseCost), card_cost: Math.round(b.cardCost),
         discount_pct: discountPct, gift_value: Math.round(b.giftValue), suggested_total: suggested,
         notes: 'Servicio',
       }).select().single();
@@ -173,6 +174,7 @@ export default function Services() {
         quantity: 1, unit_price: serviceSubtotal, total_price: serviceSubtotal,
       });
       await persistSaleProducts(sale.id, products, activeArtist.id);
+      await persistBaseService(sale.id, baseService, baseServiceMode, activeArtist.id);
       for (const u of used) {
         if (!u.grams || !u.product.gramos_por_pieza) continue;
         const pieces = Number(u.grams) / Number(u.product.gramos_por_pieza);
@@ -391,6 +393,8 @@ export default function Services() {
             discountPct={discountPct} setDiscountPct={setDiscountPct}
             payMethod={payMethod} setPayMethod={setPayMethod}
             serviceMode={serviceMode} setServiceMode={setServiceMode} serviceLabel={serviceName}
+            baseServiceCost={baseServiceCost} baseServiceMode={baseServiceMode} setBaseServiceMode={setBaseServiceMode}
+            baseServiceName={baseService?.name || 'Servicio (costo base)'}
             suppliesCost={insumosCost} suggested={suggested} />
 
           <button className="btn xl primary" style={{ width: '100%' }} onClick={charge} disabled={busy}>

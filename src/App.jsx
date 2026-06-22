@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { FloatingTimer } from './context/TimerContext';
+import { ScaleChip, useScale } from './context/ScaleContext';
 import Login from './pages/Login';
 import SelectArtist from './pages/SelectArtist';
 import Dashboard from './pages/Dashboard';
@@ -71,8 +72,16 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
       <GlobalTimerBubble />
+      <GlobalScaleChip />
     </>
   );
+}
+
+// Muestra el chip de báscula solo si hay sesión y artista activo
+function GlobalScaleChip() {
+  const { session, activeArtist } = useAuth();
+  if (!session || !activeArtist) return null;
+  return <ScaleChip />;
 }
 
 // Muestra la burbuja flotante solo si hay sesión y artista activo

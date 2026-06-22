@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Shell } from '../App';
 import { Toast, useToast } from '../components/UI';
-import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts } from '../components/Checkout';
+import { ProductPicker, CheckoutSummary, useSaleExtras, computeBreakdown, persistSaleProducts, persistBaseService } from '../components/Checkout';
 
 const BRANDS = ['Organic', 'Otro'];
 const CARD_FEE = 0.036;
@@ -20,12 +20,16 @@ export default function NailBar() {
   const [size, setSize] = useState(4);
   const [design, setDesign] = useState('Sencillo');
   const [price, setPrice] = useState('');
-  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode } = useSaleExtras();
+  const { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode, baseServiceMode, setBaseServiceMode } = useSaleExtras();
   const [screen, setScreen] = useState(1);
   const [toast, setToast] = useToast();
   const [busy, setBusy] = useState(false);
+  const [baseService, setBaseService] = useState(null);
 
   useEffect(() => {
+    supabase.from('products').select('*').eq('type', 'insumo').eq('status', 'Activo')
+      .ilike('name', 'Servicio Uñas').limit(1)
+      .then(({ data }) => setBaseService((data || [])[0] || null));
     supabase.from('clients').select('id, full_name, phone').order('full_name').limit(500)
       .then(({ data }) => {
         setClients(data || []);
@@ -39,7 +43,8 @@ export default function NailBar() {
 
   const filtered = clients.filter(c => (c.full_name || '').toLowerCase().includes(q.toLowerCase()));
   const serviceSubtotal = Number(price || 0);
-  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost: 0 });
+  const baseServiceCost = baseService ? Number(baseService.cost) : 0;
+  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost: 0, baseServiceCost, baseServiceMode });
 
   async function charge() {
     if (busy) return;
@@ -52,7 +57,7 @@ export default function NailBar() {
         service_price: b.effectiveService, subtotal: b.beforeDiscount, total: b.total,
         payment_method: payMethod,
         financial_cost: Math.round(b.realCost),
-        products_cost: Math.round(b.productsCost), supplies_cost: 0, card_cost: Math.round(b.cardCost),
+        products_cost: Math.round(b.productsCost), supplies_cost: Math.round(b.effectiveBaseCost), card_cost: Math.round(b.cardCost),
         discount_pct: discountPct, gift_value: Math.round(b.giftValue),
         notes: 'Barra de Uñas',
       }).select().single();
@@ -62,6 +67,7 @@ export default function NailBar() {
         brand, nail_size: size, design_type: design, price: serviceSubtotal,
       });
       await persistSaleProducts(sale.id, products, activeArtist.id);
+      await persistBaseService(sale.id, baseService, baseServiceMode, activeArtist.id);
       if (client) await supabase.rpc('add_loyalty_stamp', { p_client_id: client.id, p_delta: 1, p_note: 'Servicio de uñas' });
       setToast(`💅 Cobrado $${b.total.toLocaleString()}`);
       setTimeout(() => nav('/'), 1500);
@@ -127,6 +133,8 @@ export default function NailBar() {
             discountPct={discountPct} setDiscountPct={setDiscountPct}
             payMethod={payMethod} setPayMethod={setPayMethod}
             serviceMode={serviceMode} setServiceMode={setServiceMode} serviceLabel="Servicio de uñas"
+            baseServiceCost={baseServiceCost} baseServiceMode={baseServiceMode} setBaseServiceMode={setBaseServiceMode}
+            baseServiceName={baseService?.name || 'Servicio (costo base)'}
             suppliesCost={0} />
 
           <button className="btn xl primary" style={{ width: '100%' }} onClick={charge} disabled={busy}>

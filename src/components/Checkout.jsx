@@ -9,11 +9,12 @@ export function useSaleExtras() {
   const [discountPct, setDiscountPct] = useState(0);
   const [payMethod, setPayMethod] = useState('efectivo');
   const [serviceMode, setServiceMode] = useState('charge'); // 'charge' | 'gift' | 'removed'
-  return { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode };
+  const [baseServiceMode, setBaseServiceMode] = useState('include'); // 'include' | 'gift' | 'removed'
+  return { products, setProducts, discountPct, setDiscountPct, payMethod, setPayMethod, serviceMode, setServiceMode, baseServiceMode, setBaseServiceMode };
 }
 
 // Calcula el desglose completo del cobro
-export function computeBreakdown({ serviceSubtotal, serviceMode = 'charge', products, discountPct, payMethod, suppliesCost = 0 }) {
+export function computeBreakdown({ serviceSubtotal, serviceMode = 'charge', products, discountPct, payMethod, suppliesCost = 0, baseServiceCost = 0, baseServiceMode = 'include' }) {
   const svc = Number(serviceSubtotal || 0);
   const effectiveService = serviceMode === 'charge' ? svc : 0;
   const serviceGiftValue = serviceMode === 'gift' ? svc : 0;
@@ -24,9 +25,10 @@ export function computeBreakdown({ serviceSubtotal, serviceMode = 'charge', prod
   const discountAmount = beforeDiscount * (Number(discountPct || 0) / 100);
   const total = Math.max(0, beforeDiscount - discountAmount);
   const cardCost = payMethod === 'tarjeta' ? total * CARD_FEE : 0;
-  const realCost = productsCost + Number(suppliesCost || 0) + cardCost;
+  const effectiveBaseCost = baseServiceMode === 'removed' ? 0 : Number(baseServiceCost || 0);
+  const realCost = productsCost + Number(suppliesCost || 0) + cardCost + effectiveBaseCost;
   const utilidad = total - realCost;
-  return { productsGross, giftValue, productsCost, beforeDiscount, discountAmount, total, cardCost, realCost, utilidad, effectiveService };
+  return { productsGross, giftValue, productsCost, beforeDiscount, discountAmount, total, cardCost, realCost, utilidad, effectiveService, effectiveBaseCost };
 }
 
 // Buscador y selector de productos de venta (type='producto')
@@ -91,8 +93,9 @@ export function ProductPicker({ products, setProducts, label = 'Productos de ven
 export function CheckoutSummary({
   serviceSubtotal, products, discountPct, setDiscountPct, payMethod, setPayMethod,
   suppliesCost = 0, suggested = 0, serviceMode = 'charge', setServiceMode = null, serviceLabel = 'Servicio',
+  baseServiceCost = 0, baseServiceMode = 'include', setBaseServiceMode = null, baseServiceName = 'Servicio (costo base)',
 }) {
-  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost });
+  const b = computeBreakdown({ serviceSubtotal, serviceMode, products, discountPct, payMethod, suppliesCost, baseServiceCost, baseServiceMode });
   const fmt = n => '$' + Math.round(n).toLocaleString('es-MX');
   return (
     <>
@@ -147,6 +150,24 @@ export function CheckoutSummary({
 
         <div style={{ marginTop: 10, borderTop: '1px dashed var(--line)', paddingTop: 10 }}>
           <p style={{ fontSize: '.72rem', color: 'var(--muted)', margin: '0 0 6px', fontWeight: 700, letterSpacing: '.04em' }}>COSTOS INTERNOS (informativo)</p>
+          {baseServiceCost > 0 && (
+            <div className="info-cost" style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: baseServiceMode === 'removed' ? .5 : 1, borderColor: baseServiceMode === 'removed' ? 'var(--line)' : 'var(--violet)' }}>
+              <span style={{ flex: 1 }}>
+                {baseServiceName}: <b style={{ textDecoration: baseServiceMode === 'removed' ? 'line-through' : 'none' }}>{fmt(baseServiceCost)}</b>
+                {baseServiceMode === 'gift' && <span className="tag ok" style={{ marginLeft: 6 }}>REGALO</span>}
+                {baseServiceMode === 'removed' && <span className="tag" style={{ marginLeft: 6, color: 'var(--muted)' }}>QUITADO</span>}
+                <br /><span style={{ fontSize: '.72rem', color: 'var(--muted)' }}>No se cobra al cliente · {baseServiceMode === 'removed' ? 'no afecta tu utilidad' : 'afecta tu utilidad'}</span>
+              </span>
+              {setBaseServiceMode && (
+                <span style={{ display: 'flex', gap: 4 }}>
+                  <button className={'btn ghost sm' + (baseServiceMode === 'gift' ? ' ok' : '')} title="Marcar como regalo (sigue contando como costo)"
+                    onClick={() => setBaseServiceMode(m => m === 'gift' ? 'include' : 'gift')}>🎁</button>
+                  <button className={'btn ghost sm' + (baseServiceMode === 'removed' ? ' danger' : '')} title="Quitar (no se cuenta como costo)"
+                    onClick={() => setBaseServiceMode(m => m === 'removed' ? 'include' : 'removed')}>✕</button>
+                </span>
+              )}
+            </div>
+          )}
           {suppliesCost > 0 && <div className="info-cost">Insumos consumidos: <b>{fmt(suppliesCost)}</b></div>}
           {b.productsCost > 0 && <div className="info-cost">Productos (vendidos o regalados): <b>{fmt(b.productsCost)}</b></div>}
           {payMethod === 'tarjeta' && <div className="info-cost">Costo financiero tarjeta ({(CARD_FEE * 100).toFixed(1)}%): <b>−{fmt(b.cardCost)}</b> · no se suma al precio</div>}
@@ -179,4 +200,19 @@ export async function persistSaleProducts(saleId, products, artistId) {
       notes: p.gift ? 'Regalo en servicio' : 'Venta en servicio',
     });
   }
+}
+
+// Descuenta el insumo "Servicio" (costo base) del inventario si no fue quitado.
+// baseProduct: el producto insumo de la BD; mode: 'include' | 'gift' | 'removed'.
+export async function persistBaseService(saleId, baseProduct, mode, artistId) {
+  if (!baseProduct || mode === 'removed') return;
+  const { data: prod } = await supabase.from('products').select('current_stock').eq('id', baseProduct.id).single();
+  if (!prod) return;
+  const after = Math.max(0, Number(prod.current_stock) - 1);
+  await supabase.from('products').update({ current_stock: after }).eq('id', baseProduct.id);
+  await supabase.from('inventory_movements').insert({
+    product_id: baseProduct.id, user_id: artistId, type: 'consumo_servicio',
+    quantity_before: prod.current_stock, quantity_after: after,
+    notes: mode === 'gift' ? 'Costo base (regalo)' : 'Costo base de servicio',
+  });
 }

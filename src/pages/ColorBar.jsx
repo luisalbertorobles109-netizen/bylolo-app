@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Shell } from '../App';
 import { Modal, Toast, useToast } from '../components/UI';
 import { FALLBACK_RULES, suggestVol, toneColor, targetLevelOf, classifyTone, funnyLevel } from '../lib/colorRules';
-import { connectSkale } from '../lib/scale';
+import { useScale } from '../context/ScaleContext';
 import { useTimer } from '../context/TimerContext';
 
 const STEPS_BAR = [
@@ -21,6 +21,7 @@ export default function ColorBar() {
   const nav = useNavigate();
   const location = useLocation();
   const { session, profile, activeArtist } = useAuth();
+  const scale = useScale();
   const tmr = useTimer();
   const [toast, setToast] = useToast();
   const SESSION_KEY = 'bylolo_color_session';
@@ -59,6 +60,8 @@ export default function ColorBar() {
   const [treatmentCat, setTreatmentCat] = useState([]); // insumos de tratamiento
   const [bleachProducts, setBleachProducts] = useState([]); // polvos decolorantes
   const [additiveCat, setAdditiveCat] = useState([]); // aditivos (Olaplex, Bond, etc.)
+  const [baseService, setBaseService] = useState(null);          // insumo "Servicio" (costo base)
+  const [baseServiceMode, setBaseServiceMode] = useState('include'); // 'include' | 'gift' | 'removed'
   const [showTreat, setShowTreat] = useState(false);
   const [services, setServices] = useState([]);
   const [prods, setProds] = useState([]);
@@ -102,11 +105,12 @@ export default function ColorBar() {
       (b.data || []).forEach(br => { r[br.name] = { ...FALLBACK_RULES[br.name], ...br.rules }; });
       setRules(r);
       setSuppliesCat(s.data || []);
-      setSvcItems((s.data || []).filter(x => x.auto_add).map(x => ({ supply_id: x.id, name: x.name, cost: Number(x.cost), auto: true })));
+      setSvcItems([]); // el costo base ahora viene del insumo "Servicio" del inventario
       setServicesCat(sc.data || []);
       setPeroxProducts(px.data || []);
       setTreatmentCat(tr.data || []);
       setAdditiveCat(ad.data || []);
+      supabase.from('products').select('*').eq('type', 'insumo').eq('status', 'Activo').ilike('name', 'Servicio').limit(1).then(({ data }) => setBaseService((data || [])[0] || null));
       // Separar decolorantes del agrupado de tonos
       setBleachProducts((p.data || []).filter(x => (x.class || '').toLowerCase() === 'decolorante'));
       // preselección desde el dashboard
@@ -199,7 +203,7 @@ export default function ColorBar() {
   const [weights, setWeights] = useState([]);
   const [compIdx, setCompIdx] = useState(0);
   const [curGrams, setCurGrams] = useState(0);
-  const [bleOn, setBleOn] = useState(false);
+  const bleOn = scale.connected;
   const [diag, setDiag] = useState(false);
   const [diagLog, setDiagLog] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -215,6 +219,7 @@ export default function ColorBar() {
       if (snap && snap.client) {
         setClient(snap.client); setAppointmentId(snap.appointmentId || null);
         setDesignName(snap.designName || ''); setStepType(snap.stepType || null); setDecolorMix(snap.decolorMix || []);
+        setBaseServiceMode(snap.baseServiceMode || 'include');
         setBrandView(snap.brandView || 'KULL'); setGamaView(snap.gamaView || '');
         setMix(snap.mix || []); setBaseLevel(snap.baseLevel ?? 5); setMode(snap.mode || 'sugerida');
         setPeroxRows(snap.peroxRows || []); setExtraAdds(snap.extraAdds || []);
@@ -232,28 +237,33 @@ export default function ColorBar() {
   // ---- Guardar sesión cuando cambian los datos del trabajo ----
   useEffect(() => {
     if (!readyRef.current || !client) return;
-    const snap = { screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extraAdds, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
+    const snap = { screen, client, appointmentId, designName, stepType, decolorMix, baseServiceMode, brandView, gamaView, mix, baseLevel, mode, peroxRows, extraAdds, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod };
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) {}
   }, [screen, client, appointmentId, designName, stepType, decolorMix, brandView, gamaView, mix, baseLevel, mode, peroxRows, extraAdds, doneSteps, svcItems, treatments, services, prods, weighComps, weights, compIdx, savedJobId, discountPct, payMethod]);
   const simRef = useRef(0);
   const pourRef = useRef(false);
   const rafRef = useRef(null);
-  const bleRef = useRef(null);
-  const offsetRef = useRef(0);
-  const lastRawRef = useRef(0);
   const inTargetRef = useRef(null);
   const stateRef = useRef({});
   stateRef.current = { screen, compIdx, weighComps, curGrams };
+
+  // Lectura en vivo desde la báscula global: mientras estás en la pantalla de
+  // pesaje (4), el peso de la báscula alimenta curGrams en tiempo real por suscripción.
+  useEffect(() => {
+    if (screen !== 4 || !scale?.subscribe) return undefined;
+    setCurGrams(scale.getGrams ? scale.getGrams() : 0);
+    return scale.subscribe(setCurGrams);
+  }, [screen, scale]);
 
   function startWeigh() {
     setWeighComps(builtComps.map(c => ({ ...c })));
     setWeights(builtComps.map(() => 0));
     setCompIdx(0); simRef.current = 0; setCurGrams(0);
-    offsetRef.current = lastRawRef.current;
+    if (scale.connected) scale.tare();
   }
   function tare(silent) {
-    offsetRef.current = lastRawRef.current; simRef.current = 0; setCurGrams(0);
-    if (bleRef.current) bleRef.current.tare();
+    simRef.current = 0; setCurGrams(0);
+    if (scale.connected) scale.tare();
     if (!silent) setToast('Tara ✓');
   }
   function completeComponent() {
@@ -285,7 +295,7 @@ export default function ColorBar() {
     if (!pourRef.current) return;
     const { compIdx: i, weighComps: wc } = stateRef.current;
     const c = wc[i];
-    if (c && !bleRef.current) {
+    if (c && !scale.connected) {
       const remaining = c.g - simRef.current;
       const rate = remaining > 15 ? 0.9 : remaining > 4 ? 0.35 : 0.12;
       simRef.current = Math.max(0, simRef.current + rate + Math.random() * .06);
@@ -297,14 +307,8 @@ export default function ColorBar() {
   const stopPour = () => { pourRef.current = false; cancelAnimationFrame(rafRef.current); };
 
   async function connectScale() {
-    try {
-      const s = await connectSkale({
-        onWeight: (raw) => { lastRawRef.current = raw; setCurGrams(Math.max(0, raw - offsetRef.current)); },
-        onRaw: (hex) => setDiagLog(l => ('RX: ' + hex + '\n' + l).slice(0, 4000)),
-        onDisconnect: () => { bleRef.current = null; setBleOn(false); },
-      });
-      bleRef.current = s; setBleOn(true);
-    } catch (err) { setToast('⚠ ' + err.message); setDiagLog(l => ('Error: ' + err.message + '\n' + l).slice(0, 4000)); }
+    try { await scale.connect(); setToast('Báscula conectada ✓'); }
+    catch (err) { setToast('⚠ ' + err.message); }
   }
   function addMidComp(kind, customName, customG, product) {
     let c = null;
@@ -354,7 +358,7 @@ export default function ColorBar() {
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
     tmr.clear();
     setClient(null); setAppointmentId(null); setDesignName(''); setStepType(null); setDecolorMix([]);
-    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtraAdds([]);
+    setMix([]); setMode('sugerida'); setPeroxRows([]); setExtraAdds([]); setBaseServiceMode('include');
     setDoneSteps([]); setSvcItems([]); setTreatments([]); setServices([]); setProds([]);
     setWeighComps([]); setWeights([]); setCompIdx(0); setSavedJobId(null); setDiscountPct(0); setPayMethod('efectivo');
     setPhotoFile(null); setPhotoPreview(null);
@@ -434,6 +438,8 @@ export default function ColorBar() {
 
   // ---------- cobro ----------
   const allSupplyCost = svcItems.reduce((a, b) => a + Number(b.cost), 0);
+  const baseServiceCost = baseService ? Number(baseService.cost) : 0;
+  const effectiveBaseCost = baseServiceMode === 'removed' ? 0 : baseServiceCost;
   const treatmentCost = treatments.reduce((a, t) => a + (Number(t.grams) || 0) * (Number(t.product.cost) / (Number(t.product.gramos_por_pieza) || 1)), 0);
   const insumosCost = [...doneSteps, ...(weighComps.length ? [currentStepObj()] : [])]
     .reduce((a, st) => a + st.comps.reduce((x, c) => x + (c.actual_g || c.g) * (c.cost || 0), 0), 0) + allSupplyCost + treatmentCost;
@@ -457,8 +463,8 @@ export default function ColorBar() {
         user_id: activeArtist.id, client_id: client.id, appointment_id: appointmentId,
         service_name: services.map(s => s.name).join(' + ') || 'Barra de Color',
         service_price: totSvc, subtotal: beforeDiscount, total: totalCobrar,
-        financial_cost: Math.round(insumosCost + cardFee + prodsCostAll), payment_method: payMethod,
-        products_cost: Math.round(prodsCostAll), supplies_cost: Math.round(insumosCost), card_cost: Math.round(cardFee),
+        financial_cost: Math.round(insumosCost + effectiveBaseCost + cardFee + prodsCostAll), payment_method: payMethod,
+        products_cost: Math.round(prodsCostAll), supplies_cost: Math.round(insumosCost + effectiveBaseCost), card_cost: Math.round(cardFee),
         discount_pct: discountPct, gift_value: Math.round(giftDiscount),
         notes: 'Barra de Color' + (payMethod === 'tarjeta' ? ` · comisión tarjeta $${cardFee.toFixed(0)}` : '') + (giftCost > 0 ? ` · regalos costo $${giftCost.toFixed(0)}` : ''),
       }).select().single();
@@ -469,6 +475,16 @@ export default function ColorBar() {
       ];
       if (items.length) await supabase.from('sale_items').insert(items);
       if (savedJobId) await supabase.from('color_jobs').update({ sale_id: sale.id, status: 'charged' }).eq('id', savedJobId);
+      // Descontar el insumo "Servicio" (costo base) si no fue quitado
+      if (baseService && baseServiceMode !== 'removed') {
+        const after = Math.max(0, Number(baseService.current_stock) - 1);
+        await supabase.from('products').update({ current_stock: after }).eq('id', baseService.id);
+        await supabase.from('inventory_movements').insert({
+          product_id: baseService.id, user_id: activeArtist.id, type: 'consumo_servicio',
+          quantity_before: baseService.current_stock, quantity_after: after,
+          notes: baseServiceMode === 'gift' ? 'Costo base (regalo) · Barra de Color' : 'Costo base · Barra de Color',
+        });
+      }
       if (appointmentId) await supabase.from('appointments').update({ status: 'paid', total: totalCobrar }).eq('id', appointmentId);
       // estrella de lealtad por el servicio
       if (client) await supabase.rpc('add_loyalty_stamp', { p_client_id: client.id, p_delta: 1, p_note: 'Servicio Barra de Color' });
@@ -1159,13 +1175,29 @@ export default function ColorBar() {
             <div className="total-line big"><span>Total a cobrar ({payMethod})</span><span className="num">${totalCobrar.toLocaleString()}</span></div>
             <div style={{ marginTop: 10, borderTop: '1px dashed var(--line)', paddingTop: 10 }}>
               <p style={{ fontSize: '.72rem', color: 'var(--muted)', margin: '0 0 6px', fontWeight: 700, letterSpacing: '.04em' }}>COSTOS INTERNOS (informativo)</p>
-              <div className="info-cost">Insumos + servicio: <b>${insumosCost.toFixed(0)}</b></div>
+              {baseServiceCost > 0 && (
+                <div className="info-cost" style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: baseServiceMode === 'removed' ? .5 : 1, borderColor: baseServiceMode === 'removed' ? 'var(--line)' : 'var(--violet)' }}>
+                  <span style={{ flex: 1 }}>
+                    {baseService?.name || 'Servicio'} (costo base): <b style={{ textDecoration: baseServiceMode === 'removed' ? 'line-through' : 'none' }}>${baseServiceCost.toFixed(0)}</b>
+                    {baseServiceMode === 'gift' && <span className="tag ok" style={{ marginLeft: 6 }}>REGALO</span>}
+                    {baseServiceMode === 'removed' && <span className="tag" style={{ marginLeft: 6, color: 'var(--muted)' }}>QUITADO</span>}
+                    <br /><span style={{ fontSize: '.72rem', color: 'var(--muted)' }}>No se cobra al cliente · {baseServiceMode === 'removed' ? 'no afecta tu utilidad' : 'afecta tu utilidad'}</span>
+                  </span>
+                  <span style={{ display: 'flex', gap: 4 }}>
+                    <button className={'btn ghost sm' + (baseServiceMode === 'gift' ? ' ok' : '')} title="Marcar como regalo (sigue contando como costo)"
+                      onClick={() => setBaseServiceMode(m => m === 'gift' ? 'include' : 'gift')}>🎁</button>
+                    <button className={'btn ghost sm' + (baseServiceMode === 'removed' ? ' danger' : '')} title="Quitar (no se cuenta como costo)"
+                      onClick={() => setBaseServiceMode(m => m === 'removed' ? 'include' : 'removed')}>✕</button>
+                  </span>
+                </div>
+              )}
+              <div className="info-cost">Insumos consumidos: <b>${insumosCost.toFixed(0)}</b></div>
               {prodsCostAll > 0 && <div className="info-cost">Productos (vendidos o regalados): <b>${prodsCostAll.toFixed(0)}</b></div>}
               {payMethod === 'tarjeta' && (
                 <div className="info-cost">Costo financiero tarjeta ({(CARD_FEE * 100).toFixed(1)}%): <b>−${cardFee.toFixed(0)}</b> · no se suma al precio</div>
               )}
-              <div className="info-cost" style={{ borderColor: (totalCobrar - insumosCost - prodsCostAll - cardFee) >= 0 ? 'var(--ok)' : 'var(--danger)' }}>
-                Utilidad estimada: <b style={{ color: (totalCobrar - insumosCost - prodsCostAll - cardFee) >= 0 ? 'var(--ok)' : 'var(--danger)' }}>${Math.round(totalCobrar - insumosCost - prodsCostAll - cardFee).toLocaleString()}</b>
+              <div className="info-cost" style={{ borderColor: (totalCobrar - insumosCost - effectiveBaseCost - prodsCostAll - cardFee) >= 0 ? 'var(--ok)' : 'var(--danger)' }}>
+                Utilidad estimada: <b style={{ color: (totalCobrar - insumosCost - effectiveBaseCost - prodsCostAll - cardFee) >= 0 ? 'var(--ok)' : 'var(--danger)' }}>${Math.round(totalCobrar - insumosCost - effectiveBaseCost - prodsCostAll - cardFee).toLocaleString()}</b>
               </div>
             </div>
           </div>

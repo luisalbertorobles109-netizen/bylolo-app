@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { TimerProvider } from './context/TimerContext';
+import { ScaleProvider } from './context/ScaleContext';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <AuthProvider>
         <TimerProvider>
-          <App />
+          <ScaleProvider>
+            <App />
+          </ScaleProvider>
         </TimerProvider>
       </AuthProvider>
     </BrowserRouter>
