@@ -3,11 +3,42 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Shell } from '../App';
+import { Toast, useToast } from '../components/UI';
 
 export default function Dashboard() {
   const nav = useNavigate();
   const { profile, isAdmin, salonSettings, activeArtist } = useAuth();
   const [appts, setAppts] = useState([]);
+  const [toast, setToast] = useToast();
+  const [checkBusy, setCheckBusy] = useState(false);
+  const [lastCheckIn, setLastCheckIn] = useState(null);   // fecha/hora del último registro de hoy
+
+  // Carga el último registro de entrada de hoy del artista activo
+  useEffect(() => {
+    if (!activeArtist?.id) return;
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    supabase.from('attendance')
+      .select('created_at')
+      .eq('user_id', activeArtist.id).eq('type', 'in')
+      .gte('created_at', start.toISOString())
+      .order('created_at', { ascending: false }).limit(1)
+      .then(({ data }) => setLastCheckIn(data?.[0]?.created_at || null));
+  }, [activeArtist?.id]);
+
+  async function registrarEntrada() {
+    if (checkBusy || !activeArtist?.id) return;
+    setCheckBusy(true);
+    try {
+      const { error } = await supabase.from('attendance').insert({
+        user_id: activeArtist.id, type: 'in',
+        notes: `Entrada · ${activeArtist.full_name || ''}`.trim(),
+      });
+      if (error) throw error;
+      const ahora = new Date().toISOString();
+      setLastCheckIn(ahora);
+      setToast('✅ Entrada registrada · ' + new Date(ahora).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+    } catch (e) { setToast('⚠ ' + e.message); } finally { setCheckBusy(false); }
+  }
   // Mapa de nombres globales (salón) a claves de módulo
   const globalHidden = salonSettings?.hidden_modules || [];
   const artistHidden = activeArtist?.hidden_modules || [];
@@ -30,6 +61,21 @@ export default function Dashboard() {
       <div className="screen" style={{ paddingBottom: 40 }}>
         <h2>Estaciones</h2>
         <p className="lead">Elige tu estación de trabajo.</p>
+
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontWeight: 700 }}>Registro de entrada</div>
+            <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
+              {lastCheckIn
+                ? `Hoy registraste entrada a las ${new Date(lastCheckIn).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
+                : 'Aún no registras tu entrada hoy.'}
+            </div>
+          </div>
+          <button className="btn xl ok" style={{ minWidth: 180 }} onClick={registrarEntrada} disabled={checkBusy}>
+            {checkBusy ? 'Registrando…' : (lastCheckIn ? '🔄 Registrar de nuevo' : '🕘 Registrar entrada')}
+          </button>
+        </div>
+
         <div className="dash-layout">
           <div className="station-grid main">
             {show('color', 'Barra de Color') && (
@@ -125,6 +171,7 @@ export default function Dashboard() {
           );
         })}
       </div>
+      <Toast msg={toast} />
     </Shell>
   );
 }

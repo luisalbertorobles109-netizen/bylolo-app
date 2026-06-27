@@ -1,28 +1,23 @@
 # ByLolo Studio
 
-## ARREGLADO: la báscula queda sincronizada desde el inicio
+## NUEVO: Botón "Registrar entrada"
 
-ANTES: al llegar a la pantalla de pesar, el peso no se movía y tenías que
-regresar y volver a entrar para que empezara a pesar.
+En el panel principal (Studio), arriba, aparece una tarjeta con el botón
+"🕘 Registrar entrada". Al tocarlo:
+- Crea un registro en Supabase (tabla "attendance") con el artista y la hora.
+- Muestra la hora de tu última entrada de hoy.
+- Mantiene ACTIVO el proyecto en Supabase (el plan gratis se pausa tras ~7 días
+  sin actividad; cada registro cuenta como actividad).
 
-CAUSA: la pantalla leía el peso de una forma que no se actualizaba en vivo.
+Recomendación: que cada quien toque "Registrar entrada" al llegar. Además, el uso
+normal de la app (ventas, citas, etc.) ya mantiene el proyecto activo.
 
-AHORA:
-- Conecta la báscula UNA sola vez con el chip "⚖ Conectar báscula" que aparece
-  abajo a la izquierda en cuanto fichas como artista. (Web Bluetooth exige un
-  toque la primera vez; es una regla del navegador, no se puede evitar.)
-- Una vez conectada, queda sincronizada en TODAS las pantallas y durante todo el
-  servicio. Al llegar a pesar, ya está leyendo en vivo (la gota se llena sola).
-- Si la báscula se duerme o se aleja, se reconecta automáticamente.
-- Al reabrir la app, intenta reconectarse sola a la báscula ya emparejada.
-
-Recomendación: en cuanto entres con tu nombre, toca el chip de abajo a la izquierda
-para conectar la SKALE 2. Así ya no tienes que conectarla en cada pesaje.
-
-Nota: funciona en Chrome de Android o PC. Los iPad no soportan Web Bluetooth.
+NOTA: este botón ayuda cuando se usa. Si el salón cerrara más de 7 días seguidos,
+para garantizar al 100% que NO se pause haría falta un "ping" automático diario
+(lo podemos configurar aparte con una tarea programada si lo quieres).
 
 ## Probar
 1. Borra la carpeta vieja antes de descomprimir esta.
 2. npm install  →  npm run dev
-3. Ficha como artista, toca "⚖ Conectar báscula" (abajo izquierda), entra a Barra de
-   Color o Servicios y llega a pesar: el peso ya se mueve solo.
+3. Entra con tu nombre, en el panel principal toca "Registrar entrada" y verás la
+   confirmación con la hora.
